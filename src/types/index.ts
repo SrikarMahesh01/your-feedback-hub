@@ -18,7 +18,10 @@ export interface Grievance {
   title: string;
   description: string;
   category: 'academic' | 'infrastructure' | 'hostel' | 'transport' | 'library' | 'other';
-  department: string;
+  department: string; // Target department HOD who should handle this grievance
+  studentDepartment?: string; // Student's own department for reference
+  studentBranch?: string; // Student's branch for reference
+  studentYear?: string; // Student's year for reference
   status: 'pending' | 'in_progress' | 'resolved' | 'closed';
   priority: 'low' | 'medium' | 'high';
   submittedAt: string;

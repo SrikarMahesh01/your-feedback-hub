@@ -4,9 +4,10 @@ import { FileTextOutlined, TeamOutlined, FormOutlined, PlusOutlined } from '@ant
 import { useAuth } from '../../contexts/AuthContext';
 import { Grievance, FeedbackForm, User } from '../../types';
 import { 
-  getGrievancesByDepartment, 
-  getAllUsers, 
+  getGrievancesByAdminDepartments, 
+  getStudentsByDepartment, 
   getFeedbackFormsByDepartment,
+  getDetailedFeedbackResponses,
   createFeedbackForm,
   updateGrievanceStatus 
 } from '../../services/firebaseService';
@@ -23,6 +24,7 @@ export const AdminDashboard: React.FC = () => {
   const [grievances, setGrievances] = useState<Grievance[]>([]);
   const [students, setStudents] = useState<User[]>([]);
   const [feedbackForms, setFeedbackForms] = useState<FeedbackForm[]>([]);
+  const [feedbackResponses, setFeedbackResponses] = useState<any[]>([]);
   const [isFormModalVisible, setIsFormModalVisible] = useState(false);
   const [form] = Form.useForm();
 
@@ -75,6 +77,7 @@ export const AdminDashboard: React.FC = () => {
     }
     if (currentView === 'dashboard' || currentView === 'forms' || currentView === 'responses') {
       loadFeedbackForms();
+      loadFeedbackResponses();
     }
   }, [user?.department, currentView]);
 
@@ -82,9 +85,16 @@ export const AdminDashboard: React.FC = () => {
     if (!user?.department) return;
     
     try {
-      // Handle both single department and multiple departments
-      const department = Array.isArray(user.department) ? user.department[0] : user.department;
-      const departmentGrievances = await getGrievancesByDepartment(department);
+      // Use enhanced function that supports both single and multiple departments
+      const departmentGrievances = await getGrievancesByAdminDepartments(user.department);
+      
+      // Debug: Log department routing information
+      console.log('Admin department:', user.department);
+      console.log('Loaded grievances:', departmentGrievances.length);
+      departmentGrievances.forEach(grievance => {
+        console.log(`- Grievance: ${grievance.title} | Student: ${grievance.studentName} (${grievance.studentDepartment}) | Routed to: ${grievance.department}`);
+      });
+      
       setGrievances(departmentGrievances);
     } catch (error) {
       console.error('Error loading grievances:', error);
@@ -95,10 +105,8 @@ export const AdminDashboard: React.FC = () => {
     if (!user?.department) return;
     
     try {
-      const allUsers = await getAllUsers();
-      const departmentStudents = allUsers.filter((u: User) => 
-        u.role === 'student' && u.branch === user?.department
-      );
+      // Use enhanced function that supports both single and multiple departments
+      const departmentStudents = await getStudentsByDepartment(user.department);
       setStudents(departmentStudents);
     } catch (error) {
       console.error('Error loading students:', error);
@@ -115,6 +123,17 @@ export const AdminDashboard: React.FC = () => {
       setFeedbackForms(departmentForms);
     } catch (error) {
       console.error('Error loading feedback forms:', error);
+    }
+  };
+
+  const loadFeedbackResponses = async () => {
+    if (!user?.department) return;
+    
+    try {
+      const responses = await getDetailedFeedbackResponses(user.department);
+      setFeedbackResponses(responses);
+    } catch (error) {
+      console.error('Error loading feedback responses:', error);
     }
   };
 
@@ -168,11 +187,24 @@ export const AdminDashboard: React.FC = () => {
 
   const renderDashboard = () => (
     <div className="space-y-6">
-      <div>
-        <Title level={2}>HOD Dashboard</Title>
-        <p className="text-gray-600">
-          Department: {Array.isArray(user?.department) ? user.department.join(', ') : user?.department}
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <Title level={2}>HOD Dashboard</Title>
+          <p className="text-gray-600">
+            Department: {Array.isArray(user?.department) ? user.department.join(', ') : user?.department}
+          </p>
+        </div>
+        <Button 
+          type="primary" 
+          onClick={() => {
+            loadGrievances();
+            loadStudents();
+            loadFeedbackForms();
+            loadFeedbackResponses();
+          }}
+        >
+          Refresh Data
+        </Button>
       </div>
 
       <Row gutter={[16, 16]}>
@@ -222,8 +254,24 @@ export const AdminDashboard: React.FC = () => {
           columns={[
             {
               title: 'Student',
-              dataIndex: 'studentName',
-              key: 'studentName',
+              key: 'student',
+              render: (_, record) => (
+                <div>
+                  <div className="font-medium">{record.studentName}</div>
+                  <div className="text-sm text-gray-500">
+                    {record.studentDepartment && (
+                      <Tag color="blue">
+                        {record.studentDepartment}
+                      </Tag>
+                    )}
+                    {record.studentYear && (
+                      <Tag color="green">
+                        Year {record.studentYear}
+                      </Tag>
+                    )}
+                  </div>
+                </div>
+              ),
             },
             {
               title: 'Title',
@@ -235,6 +283,14 @@ export const AdminDashboard: React.FC = () => {
               dataIndex: 'category',
               key: 'category',
               render: (category: string) => <Tag>{category}</Tag>,
+            },
+            {
+              title: 'Routed To',
+              dataIndex: 'department',
+              key: 'department',
+              render: (department: string) => (
+                <Tag color="purple">{department}</Tag>
+              ),
             },
             {
               title: 'Status',
@@ -589,32 +645,136 @@ export const AdminDashboard: React.FC = () => {
       <div>
         <Title level={2}>Form Responses</Title>
         <p className="text-gray-600">
-          View and analyze responses to your feedback forms
+          View and analyze responses to your feedback forms from students in your department
         </p>
       </div>
 
       <Row gutter={[16, 16]}>
-        {feedbackForms.map((form) => (
-          <Col xs={24} lg={12} key={form.id}>
-            <Card
-              title={form.title}
-              extra={<Tag color="blue">{(form as any).responses?.length || 0} responses</Tag>}
-            >
-              <p className="text-gray-600 mb-4">{form.description}</p>
-              <div className="space-y-2">
-                <div><strong>Target:</strong> Year {form.targetYear}, {form.targetBranch}</div>
-                <div><strong>Status:</strong> <Tag color={form.isActive ? 'green' : 'red'}>{form.isActive ? 'Active' : 'Inactive'}</Tag></div>
-                <div><strong>Type:</strong> <Tag color={form.isAnonymous ? 'blue' : 'default'}>{form.isAnonymous ? 'Anonymous' : 'Named'}</Tag></div>
-              </div>
-              <div className="mt-4">
-                <Button type="primary" size="small">
-                  View Responses
-                </Button>
-              </div>
-            </Card>
-          </Col>
-        ))}
+        <Col xs={24} sm={8}>
+          <Card>
+            <Statistic
+              title="Total Responses"
+              value={feedbackResponses.length}
+              prefix={<FormOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card>
+            <Statistic
+              title="Active Forms"
+              value={feedbackForms.filter(f => f.isActive).length}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card>
+            <Statistic
+              title="This Month"
+              value={feedbackResponses.filter(r => {
+                const responseDate = new Date(r.submittedAt);
+                const currentDate = new Date();
+                return responseDate.getMonth() === currentDate.getMonth() && 
+                       responseDate.getFullYear() === currentDate.getFullYear();
+              }).length}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
       </Row>
+
+      <Card title="Recent Responses">
+        <Table
+          dataSource={feedbackResponses}
+          columns={[
+            {
+              title: 'Form',
+              key: 'form',
+              render: (_, record) => (
+                <div>
+                  <div className="font-medium">{record.formDetails?.title || 'N/A'}</div>
+                  <div className="text-sm text-gray-500">{record.formDetails?.department}</div>
+                </div>
+              ),
+            },
+            {
+              title: 'Student',
+              key: 'student',
+              render: (_, record) => (
+                <div>
+                  {record.isAnonymous ? (
+                    <Tag color="blue">Anonymous</Tag>
+                  ) : (
+                    <div>
+                      <div className="font-medium">{record.studentDetails?.name || 'N/A'}</div>
+                      <div className="text-sm text-gray-500">
+                        {record.studentDetails?.rollNumber} - Year {record.studentDetails?.year}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+            {
+              title: 'Submitted',
+              dataIndex: 'submittedAt',
+              key: 'submittedAt',
+              render: (date: string) => new Date(date).toLocaleDateString(),
+            },
+            {
+              title: 'Questions',
+              key: 'questions',
+              render: (_, record) => (
+                <div className="text-sm">
+                  {record.formDetails?.questions?.length || 0} questions
+                </div>
+              ),
+            },
+            {
+              title: 'Action',
+              key: 'action',
+              render: () => (
+                <Button type="link" size="small">
+                  View Details
+                </Button>
+              ),
+            },
+          ]}
+          rowKey="id"
+          pagination={{ pageSize: 10 }}
+          scroll={{ x: 800 }}
+        />
+      </Card>
+
+      <Card title="Form Performance">
+        <Row gutter={[16, 16]}>
+          {feedbackForms.map((form) => {
+            const formResponses = feedbackResponses.filter(r => r.formId === form.id);
+            return (
+              <Col xs={24} lg={12} key={form.id}>
+                <Card
+                  title={form.title}
+                  extra={<Tag color="blue">{formResponses.length} responses</Tag>}
+                >
+                  <p className="text-gray-600 mb-4">{form.description}</p>
+                  <div className="space-y-2">
+                    <div><strong>Target:</strong> Year {form.targetYear}, {form.targetBranch}</div>
+                    <div><strong>Status:</strong> <Tag color={form.isActive ? 'green' : 'red'}>{form.isActive ? 'Active' : 'Inactive'}</Tag></div>
+                    <div><strong>Type:</strong> <Tag color={form.isAnonymous ? 'blue' : 'default'}>{form.isAnonymous ? 'Anonymous' : 'Named'}</Tag></div>
+                    <div><strong>Created:</strong> {new Date(form.createdAt).toLocaleDateString()}</div>
+                  </div>
+                  <div className="mt-4">
+                    <Button type="primary" size="small">
+                      View All Responses ({formResponses.length})
+                    </Button>
+                  </div>
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
+      </Card>
     </div>
   );
 
@@ -696,6 +856,24 @@ export const AdminDashboard: React.FC = () => {
         return renderDashboard();
     }
   };
+
+  // Debug: Add temporary console logging to diagnose the issue
+  useEffect(() => {
+    if (user?.department && currentView === 'dashboard') {
+      console.log('Current admin department:', user.department);
+      console.log('Current feedback responses count:', feedbackResponses.length);
+      console.log('Current grievances count:', grievances.length);
+      console.log('Current students count:', students.length);
+      
+      // Log some sample data
+      if (feedbackResponses.length > 0) {
+        console.log('Sample feedback response:', feedbackResponses[0]);
+      }
+      if (grievances.length > 0) {
+        console.log('Sample grievance:', grievances[0]);
+      }
+    }
+  }, [user?.department, currentView, feedbackResponses.length, grievances.length, students.length]);
 
   return renderCurrentView();
 };

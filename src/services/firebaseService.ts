@@ -272,25 +272,85 @@ export const createFeedbackForm = async (formData: Omit<FeedbackForm, 'id' | 'cr
 
 export const getFeedbackFormsByDepartment = async (department: string): Promise<FeedbackForm[]> => {
   try {
-    const q = query(
+    // Get regular forms for the department
+    const regularFormsQuery = query(
       collection(db, FEEDBACK_FORMS_COLLECTION), 
       where('department', '==', department)
     );
-    const querySnapshot = await getDocs(q);
-    const forms = querySnapshot.docs.map(doc => {
+    const regularSnapshot = await getDocs(regularFormsQuery);
+    const regularForms = regularSnapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
         ...data,
+        isAnonymous: false,
         createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
         expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
       } as FeedbackForm;
     });
-    
-    // Sort by createdAt in JavaScript instead of Firestore
-    return forms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // Get anonymous forms for the department
+    const anonymousFormsQuery = query(
+      collection(db, ANONYMOUS_FORMS_COLLECTION), 
+      where('department', '==', department),
+      where('isActive', '==', true)
+    );
+    const anonymousSnapshot = await getDocs(anonymousFormsQuery);
+    const anonymousForms = anonymousSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        isAnonymous: true,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+    });
+
+    // Combine and sort all forms
+    const allForms = [...regularForms, ...anonymousForms];
+    return allForms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (error) {
     console.error('Error getting feedback forms by department:', error);
+    throw error;
+  }
+};
+
+export const getAllFeedbackForms = async (): Promise<FeedbackForm[]> => {
+  try {
+    // Get regular forms
+    const regularQuery = query(collection(db, FEEDBACK_FORMS_COLLECTION));
+    const regularSnapshot = await getDocs(regularQuery);
+    const regularForms = regularSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        isAnonymous: false,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+    });
+
+    // Get anonymous forms
+    const anonymousQuery = query(collection(db, ANONYMOUS_FORMS_COLLECTION));
+    const anonymousSnapshot = await getDocs(anonymousQuery);
+    const anonymousForms = anonymousSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        isAnonymous: true,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+    });
+
+    // Combine and sort all forms
+    const allForms = [...regularForms, ...anonymousForms];
+    return allForms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (error) {
+    console.error('Error getting all feedback forms:', error);
     throw error;
   }
 };
@@ -457,6 +517,79 @@ export const subscribeToFeedbackForms = (callback: (forms: FeedbackForm[]) => vo
       } as FeedbackForm;
     });
     callback(forms);
+  });
+};
+
+export const subscribeToFeedbackResponses = (callback: (responses: any[]) => void, adminDepartments: string | string[]) => {
+  const departments = Array.isArray(adminDepartments) ? adminDepartments : [adminDepartments];
+  
+  // Get all forms for the departments first
+  getAllFeedbackForms().then(allForms => {
+    const departmentForms = allForms.filter((form: FeedbackForm) => departments.includes(form.department));
+    const formIds = departmentForms.map((form: FeedbackForm) => form.id);
+    
+    if (formIds.length === 0) {
+      callback([]);
+      return;
+    }
+    
+    // Listen to regular responses
+    const regularResponsesQuery = query(
+      collection(db, FEEDBACK_RESPONSES_COLLECTION),
+      where('formId', 'in', formIds),
+      orderBy('submittedAt', 'desc')
+    );
+    
+    // Listen to anonymous responses
+    const anonymousResponsesQuery = query(
+      collection(db, ANONYMOUS_RESPONSES_COLLECTION),
+      where('formId', 'in', formIds),
+      orderBy('submittedAt', 'desc')
+    );
+    
+    let regularResponses: any[] = [];
+    let anonymousResponses: any[] = [];
+    
+    const combineAndCallback = () => {
+      const allResponses = [...regularResponses, ...anonymousResponses];
+      // Sort by submittedAt
+      allResponses.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+      callback(allResponses);
+    };
+    
+    // Subscribe to regular responses
+    const unsubscribeRegular = onSnapshot(regularResponsesQuery, (querySnapshot) => {
+      regularResponses = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          isAnonymous: false,
+          submittedAt: data.submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        };
+      });
+      combineAndCallback();
+    });
+    
+    // Subscribe to anonymous responses
+    const unsubscribeAnonymous = onSnapshot(anonymousResponsesQuery, (querySnapshot) => {
+      anonymousResponses = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          isAnonymous: true,
+          submittedAt: data.submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        };
+      });
+      combineAndCallback();
+    });
+    
+    // Return combined unsubscribe function
+    return () => {
+      unsubscribeRegular();
+      unsubscribeAnonymous();
+    };
   });
 };
 
@@ -664,5 +797,268 @@ export const updateUserProfile = async (userId: string, updates: Partial<User>):
   } catch (error: any) {
     console.error('Error updating user profile:', error);
     return { success: false, error: error.message || 'Failed to update profile' };
+  }
+};
+
+// Enhanced department-based data functions
+export const getStudentsByDepartment = async (department: string | string[]): Promise<User[]> => {
+  try {
+    const departments = Array.isArray(department) ? department : [department];
+    const allUsers = await getAllUsers();
+    
+    const students = allUsers.filter((user: User) => 
+      user.role === 'student' && 
+      user.branch && 
+      departments.includes(user.branch)
+    );
+    
+    return students.sort((a, b) => a.name.localeCompare(b.name));
+  } catch (error) {
+    console.error('Error getting students by department:', error);
+    throw error;
+  }
+};
+
+export const getGrievancesByAdminDepartments = async (adminDepartments: string | string[]): Promise<Grievance[]> => {
+  try {
+    const departments = Array.isArray(adminDepartments) ? adminDepartments : [adminDepartments];
+    const allGrievances = await getAllGrievances();
+    
+    const departmentGrievances = allGrievances.filter((grievance: Grievance) => {
+      // Check if the grievance department matches any of the admin's departments
+      return departments.includes(grievance.department);
+    });
+    
+    return departmentGrievances.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  } catch (error) {
+    console.error('Error getting grievances by admin departments:', error);
+    throw error;
+  }
+};
+
+export const getFeedbackResponsesByDepartment = async (department: string | string[]): Promise<FeedbackResponse[]> => {
+  try {
+    const departments = Array.isArray(department) ? department : [department];
+    
+    // Get all feedback forms for the departments
+    const allForms = await getAllFeedbackForms();
+    const departmentForms = allForms.filter((form: FeedbackForm) => 
+      departments.includes(form.department)
+    );
+    const formIds = departmentForms.map((form: FeedbackForm) => form.id);
+    
+    if (formIds.length === 0) {
+      return [];
+    }
+    
+    // Get responses for these forms
+    const q = query(
+      collection(db, FEEDBACK_RESPONSES_COLLECTION),
+      where('formId', 'in', formIds)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const responses = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        submittedAt: data.submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+      } as FeedbackResponse;
+    });
+    
+    return responses.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  } catch (error) {
+    console.error('Error getting feedback responses by department:', error);
+    throw error;
+  }
+};
+
+export const getAnonymousResponsesByDepartment = async (department: string | string[]): Promise<FeedbackResponse[]> => {
+  try {
+    const departments = Array.isArray(department) ? department : [department];
+    
+    // Get all anonymous forms for the departments
+    const allForms = await getAllAnonymousForms();
+    const departmentForms = allForms.filter((form: FeedbackForm) => 
+      departments.includes(form.department)
+    );
+    const formIds = departmentForms.map(form => form.id);
+    
+    if (formIds.length === 0) {
+      return [];
+    }
+    
+    // Get anonymous responses for these forms
+    const q = query(
+      collection(db, ANONYMOUS_RESPONSES_COLLECTION),
+      where('formId', 'in', formIds)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const responses = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        submittedAt: data.submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+      } as FeedbackResponse;
+    });
+    
+    return responses.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  } catch (error) {
+    console.error('Error getting anonymous responses by department:', error);
+    throw error;
+  }
+};
+
+export const getAllAnonymousForms = async (): Promise<FeedbackForm[]> => {
+  try {
+    const q = query(collection(db, ANONYMOUS_FORMS_COLLECTION));
+    const querySnapshot = await getDocs(q);
+    const forms = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+    });
+    
+    return forms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (error) {
+    console.error('Error getting all anonymous forms:', error);
+    throw error;
+  }
+};
+
+export const getDetailedStudentGrievances = async (adminDepartments: string | string[]): Promise<any[]> => {
+  try {
+    const departments = Array.isArray(adminDepartments) ? adminDepartments : [adminDepartments];
+    
+    // Get all students from admin's departments
+    const students = await getStudentsByDepartment(departments);
+    
+    // Get all grievances for these departments
+    const grievances = await getGrievancesByAdminDepartments(departments);
+    
+    // Combine student info with their grievances
+    const detailedGrievances = grievances.map(grievance => {
+      const student = students.find(s => s.id === grievance.studentId);
+      return {
+        ...grievance,
+        studentDetails: student ? {
+          name: student.name,
+          email: student.email,
+          rollNumber: student.rollNumber,
+          year: student.year,
+          branch: student.branch,
+        } : null,
+      };
+    });
+    
+    return detailedGrievances;
+  } catch (error) {
+    console.error('Error getting detailed student grievances:', error);
+    throw error;
+  }
+};
+
+export const getDetailedFeedbackResponses = async (adminDepartments: string | string[]): Promise<any[]> => {
+  try {
+    const departments = Array.isArray(adminDepartments) ? adminDepartments : [adminDepartments];
+    
+    // Get all feedback forms for the departments
+    const allForms = await getAllFeedbackForms();
+    const departmentForms = allForms.filter((form: FeedbackForm) => departments.includes(form.department));
+    
+    // Get all responses for these forms (both regular and anonymous)
+    const regularResponses = await getFeedbackResponsesByDepartment(departments);
+    const anonymousResponses = await getAnonymousResponsesByDepartment(departments);
+    
+    // Combine both types of responses
+    const allResponses = [...regularResponses, ...anonymousResponses];
+    
+    // Get all students from admin's departments
+    const students = await getStudentsByDepartment(departments);
+    
+    // Combine response info with student and form details
+    const detailedResponses = allResponses.map(response => {
+      const form = departmentForms.find((f: FeedbackForm) => f.id === response.formId);
+      const student = response.studentId ? students.find(s => s.id === response.studentId) : null;
+      
+      return {
+        ...response,
+        isAnonymous: !response.studentId || response.isAnonymous,
+        formDetails: form ? {
+          title: form.title,
+          description: form.description,
+          department: form.department,
+          questions: form.questions,
+        } : null,
+        studentDetails: student ? {
+          name: student.name,
+          email: student.email,
+          rollNumber: student.rollNumber,
+          year: student.year,
+          branch: student.branch,
+        } : null,
+      };
+    });
+    
+    return detailedResponses;
+  } catch (error) {
+    console.error('Error getting detailed feedback responses:', error);
+    throw error;
+  }
+};
+
+// Debug function to check data sync issues
+export const debugDepartmentSync = async (adminDepartment: string) => {
+  try {
+    console.log('=== DEBUG: Department Sync Check ===');
+    console.log('Admin Department:', adminDepartment);
+    
+    // Check all forms in the department
+    const allForms = await getAllFeedbackForms();
+    const deptForms = allForms.filter(form => form.department === adminDepartment);
+    console.log('Forms in department:', deptForms.length);
+    deptForms.forEach(form => {
+      console.log(`- Form: ${form.title} (${form.isAnonymous ? 'Anonymous' : 'Regular'})`);
+    });
+    
+    // Check responses for the department
+    const responses = await getDetailedFeedbackResponses(adminDepartment);
+    console.log('Responses in department:', responses.length);
+    responses.forEach(response => {
+      console.log(`- Response: ${response.formDetails?.title} - ${response.isAnonymous ? 'Anonymous' : response.studentDetails?.name}`);
+    });
+    
+    // Check grievances
+    const grievances = await getGrievancesByAdminDepartments(adminDepartment);
+    console.log('Grievances in department:', grievances.length);
+    grievances.forEach(grievance => {
+      console.log(`- Grievance: ${grievance.title} by ${grievance.studentName}`);
+    });
+    
+    // Check students
+    const students = await getStudentsByDepartment(adminDepartment);
+    console.log('Students in department:', students.length);
+    students.forEach(student => {
+      console.log(`- Student: ${student.name} (${student.rollNumber})`);
+    });
+    
+    console.log('=== END DEBUG ===');
+    
+    return {
+      forms: deptForms,
+      responses: responses,
+      grievances: grievances,
+      students: students
+    };
+  } catch (error) {
+    console.error('Debug error:', error);
+    throw error;
   }
 };

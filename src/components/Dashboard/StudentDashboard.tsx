@@ -96,13 +96,20 @@ export const StudentDashboard: React.FC = () => {
     if (!user?.id) return;
 
     try {
+      // Use student's department as primary routing, but allow override for cross-departmental issues
+      const targetDepartment = values.department || user?.department || user?.branch;
+      const studentDept = Array.isArray(user?.department) ? user?.department[0] : user?.department;
+      
       const grievanceData = {
         studentId: user?.id || '',
         studentName: user?.name || '',
         title: values.title,
         description: values.description,
         category: values.category,
-        department: values.department,
+        department: targetDepartment, // This determines which HOD receives the grievance
+        studentDepartment: studentDept || user?.branch, // Student's own department for reference
+        studentBranch: user?.branch,
+        studentYear: user?.year,
         status: 'pending' as const,
         priority: values.priority,
       };
@@ -125,6 +132,25 @@ export const StudentDashboard: React.FC = () => {
     } catch (error) {
       console.error('Error submitting grievance:', error);
     }
+  };
+
+  // Function to suggest department based on category
+  const suggestDepartmentForCategory = (category: string) => {
+    const departmentMapping = {
+      'academic': Array.isArray(user?.department) ? user?.department[0] : user?.department || user?.branch,
+      'infrastructure': 'Administration',
+      'hostel': 'Hostel Management',
+      'transport': 'Transport',
+      'library': 'Administration',
+      'other': Array.isArray(user?.department) ? user?.department[0] : user?.department || user?.branch,
+    };
+    return departmentMapping[category as keyof typeof departmentMapping] || 'Administration';
+  };
+
+  // Handle category change to auto-suggest department
+  const handleCategoryChange = (category: string) => {
+    const suggestedDepartment = suggestDepartmentForCategory(category);
+    form.setFieldsValue({ department: suggestedDepartment });
   };
 
   const grievanceColumns = [
@@ -597,27 +623,48 @@ export const StudentDashboard: React.FC = () => {
             label="Category"
             rules={[{ required: true, message: 'Please select a category' }]}
           >
-            <Select placeholder="Select category">
+            <Select placeholder="Select category" onChange={handleCategoryChange}>
               <Select.Option value="academic">Academic</Select.Option>
+              <Select.Option value="infrastructure">Infrastructure</Select.Option>
               <Select.Option value="hostel">Hostel</Select.Option>
               <Select.Option value="transport">Transport</Select.Option>
-              <Select.Option value="food">Food</Select.Option>
-              <Select.Option value="infrastructure">Infrastructure</Select.Option>
+              <Select.Option value="library">Library</Select.Option>
               <Select.Option value="other">Other</Select.Option>
             </Select>
           </Form.Item>
+          <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-700">
+              <strong>Note:</strong> Your grievance will be routed to the selected department's HOD. 
+              For academic issues, select your department (e.g., CSE, ECE). 
+              For administrative issues, select the relevant administrative department.
+            </p>
+            <p className="text-xs text-blue-600 mt-1">
+              Your department: {Array.isArray(user?.department) ? user?.department[0] : user?.department || user?.branch || 'Not specified'}
+            </p>
+          </div>
           <Form.Item
             name="department"
-            label="Department"
-            rules={[{ required: true, message: 'Please select a department' }]}
+            label="Route to Department"
+            rules={[{ required: true, message: 'Please select the department to handle this grievance' }]}
+            initialValue={Array.isArray(user?.department) ? user?.department[0] : user?.department || user?.branch}
           >
-            <Select placeholder="Select department">
-              <Select.Option value="Academic Affairs">Academic Affairs</Select.Option>
-              <Select.Option value="Student Affairs">Student Affairs</Select.Option>
-              <Select.Option value="Hostel Management">Hostel Management</Select.Option>
-              <Select.Option value="Transport">Transport</Select.Option>
-              <Select.Option value="IT Support">IT Support</Select.Option>
-              <Select.Option value="Administration">Administration</Select.Option>
+            <Select placeholder="Select department to handle this grievance">
+              <Select.OptGroup label="Academic Departments">
+                <Select.Option value="CSE">Computer Science Engineering (CSE)</Select.Option>
+                <Select.Option value="ECE">Electronics & Communication Engineering (ECE)</Select.Option>
+                <Select.Option value="EEE">Electrical & Electronics Engineering (EEE)</Select.Option>
+                <Select.Option value="MECH">Mechanical Engineering (MECH)</Select.Option>
+                <Select.Option value="CIVIL">Civil Engineering (CIVIL)</Select.Option>
+                <Select.Option value="IT">Information Technology (IT)</Select.Option>
+              </Select.OptGroup>
+              <Select.OptGroup label="Administrative Departments">
+                <Select.Option value="Academic Affairs">Academic Affairs</Select.Option>
+                <Select.Option value="Student Affairs">Student Affairs</Select.Option>
+                <Select.Option value="Hostel Management">Hostel Management</Select.Option>
+                <Select.Option value="Transport">Transport</Select.Option>
+                <Select.Option value="IT Support">IT Support</Select.Option>
+                <Select.Option value="Administration">Administration</Select.Option>
+              </Select.OptGroup>
             </Select>
           </Form.Item>
           <Form.Item
