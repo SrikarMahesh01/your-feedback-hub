@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection
+    match /users/{userId} {
+      // Users can read their own data
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Super admins can read/write all users
+      allow read, write: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
+      
+      // Admins can read students in their department
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+        resource.data.role == 'student' &&
+        resource.data.branch == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department;
+      
+      // Allow user creation during registration
+      allow create: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Grievances collection
+    match /grievances/{grievanceId} {
+      // Students can read their own grievances
+      allow read: if request.auth != null && resource.data.studentId == request.auth.uid;
+      
+      // Students can create grievances
+      allow create: if request.auth != null && request.data.studentId == request.auth.uid;
+      
+      // Admins can read/update grievances in their department
+      allow read, update: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+        resource.data.department == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department;
+      
+      // Super admins can read/update all grievances
+      allow read, update: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
+    }
+    
+    // Feedback forms collection
+    match /feedback_forms/{formId} {
+      // Students can read active forms targeted to them
+      allow read: if request.auth != null && 
+        resource.data.isActive == true &&
+        (resource.data.targetYear == null || 
+         resource.data.targetYear == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.year) &&
+        (resource.data.targetBranch == null || 
+         resource.data.targetBranch == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.branch);
+      
+      // Admins can create/read/update forms in their department
+      allow create, read, update: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+        resource.data.department == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department;
+      
+      // Super admins can read all forms
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
+    }
+    
+    // Feedback responses collection
+    match /feedback_responses/{responseId} {
+      // Students can create responses
+      allow create: if request.auth != null && request.data.studentId == request.auth.uid;
+      
+      // Students can read their own responses
+      allow read: if request.auth != null && resource.data.studentId == request.auth.uid;
+      
+      // Admins can read responses to their department's forms
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      // Super admins can read all responses
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
+    }
+    
+    // Anonymous forms collection
+    match /anonymous_forms/{formId} {
+      // Anyone can read active anonymous forms
+      allow read: if resource.data.isActive == true;
+      
+      // Admins can create anonymous forms
+      allow create: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      // Super admins can read all anonymous forms
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
+    }
+    
+    // Anonymous responses collection
+    match /anonymous_responses/{responseId} {
+      // Anyone can create anonymous responses
+      allow create: if true;
+      
+      // Only admins and super admins can read anonymous responses
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin');
+    }
+  }
+}
