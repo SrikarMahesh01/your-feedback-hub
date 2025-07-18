@@ -256,13 +256,41 @@ export const updateGrievanceStatus = async (grievanceId: string, status: string,
   }
 };
 
+export const getGrievanceById = async (grievanceId: string): Promise<Grievance | null> => {
+  try {
+    const docRef = doc(db, GRIEVANCES_COLLECTION, grievanceId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        ...data,
+        submittedAt: data.submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+      } as Grievance;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting grievance by ID:', error);
+    throw error;
+  }
+};
+
 // Feedback Form operations
 export const createFeedbackForm = async (formData: Omit<FeedbackForm, 'id' | 'createdAt'>) => {
+  console.log('createFeedbackForm called with:', formData);
+  
+  // Clean the data to remove any undefined values
+  const cleanData = JSON.parse(JSON.stringify(formData));
+  
   try {
     const docRef = await addDoc(collection(db, FEEDBACK_FORMS_COLLECTION), {
-      ...formData,
+      ...cleanData,
       createdAt: serverTimestamp(),
     });
+    
+    console.log('Feedback form created with ID:', docRef.id);
     return docRef.id;
   } catch (error) {
     console.error('Error creating feedback form:', error);
@@ -287,6 +315,7 @@ export const getFeedbackFormsByDepartment = async (department: string): Promise<
         createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
         expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
       } as FeedbackForm;
+
     });
 
     // Get anonymous forms for the department
@@ -330,6 +359,7 @@ export const getAllFeedbackForms = async (): Promise<FeedbackForm[]> => {
         createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
         expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
       } as FeedbackForm;
+
     });
 
     // Get anonymous forms
@@ -355,15 +385,20 @@ export const getAllFeedbackForms = async (): Promise<FeedbackForm[]> => {
   }
 };
 
-export const getAvailableFeedbackForms = async (studentYear?: string, studentBranch?: string): Promise<FeedbackForm[]> => {
+export const getAvailableFeedbackForms = async (studentYear?: string, studentBranch?: string, studentDepartment?: string, studentId?: string): Promise<FeedbackForm[]> => {
+  console.log('=== FORM FILTERING DEBUG ===');
+  console.log('Student details:', { studentYear, studentBranch, studentDepartment, studentId });
+  
   try {
+    // Remove orderBy to avoid index requirements
     let q = query(
       collection(db, FEEDBACK_FORMS_COLLECTION), 
-      where('isActive', '==', true),
-      orderBy('createdAt', 'desc')
+      where('isActive', '==', true)
     );
     
     const querySnapshot = await getDocs(q);
+    console.log('Raw forms retrieved from Firebase:', querySnapshot.docs.length);
+    
     const forms = querySnapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -374,13 +409,86 @@ export const getAvailableFeedbackForms = async (studentYear?: string, studentBra
       } as FeedbackForm;
     });
 
-    // Filter forms based on target criteria
-    return forms.filter(form => {
-      const yearMatch = !form.targetYear || form.targetYear === studentYear;
-      const branchMatch = !form.targetBranch || form.targetBranch === studentBranch;
+    console.log('All active forms:', forms.map(f => ({
+      id: f.id,
+      title: f.title,
+      department: f.department,
+      targetYear: f.targetYear,
+      targetBranch: f.targetBranch,
+      isActive: f.isActive,
+      createdAt: f.createdAt
+    })));
+
+    // Get submitted form IDs for this student if studentId is provided
+    let submittedFormIds: string[] = [];
+    if (studentId) {
+      try {
+        const submittedResponses = await getFeedbackResponsesByStudent(studentId);
+        submittedFormIds = submittedResponses.map(response => response.formId);
+        console.log('Student has already submitted forms:', submittedFormIds);
+      } catch (error) {
+        console.error('Error getting submitted responses:', error);
+      }
+    }
+
+    // Filter forms based on target criteria - only using targetBranch and targetYear
+    const filteredForms = forms.filter(form => {
+      console.log(`\n--- Checking form: ${form.title} (${form.id}) ---`);
+      console.log('Form details:', {
+        department: form.department,
+        targetYear: form.targetYear,
+        targetBranch: form.targetBranch,
+        isActive: form.isActive,
+        expiresAt: form.expiresAt
+      });
+      
+      // First, check if student has already submitted this form
+      if (studentId && submittedFormIds.includes(form.id)) {
+        console.log('❌ Student has already submitted this form');
+        return false;
+      }
+      
+      // Make year matching more flexible
+      const normalizeYear = (year: string) => {
+        if (!year) return '';
+        return year.toString().replace(/[^0-9]/g, ''); // Extract only numbers
+      };
+      
+      const formYear = normalizeYear(form.targetYear || '');
+      const studentYearNum = normalizeYear(studentYear || '');
+      
+      const yearMatch = !form.targetYear || 
+        form.targetYear === 'all' || 
+        formYear === studentYearNum ||
+        form.targetYear === studentYear;
+        
+      const branchMatch = !form.targetBranch || 
+        form.targetBranch === 'all' || 
+        form.targetBranch?.toLowerCase() === studentBranch?.toLowerCase();
+        
       const notExpired = !form.expiresAt || new Date(form.expiresAt) > new Date();
-      return yearMatch && branchMatch && notExpired;
+      
+      console.log('Filter results:', {
+        yearMatch: `${yearMatch} (form.targetYear: ${form.targetYear}, studentYear: ${studentYear}, normalized: ${formYear} vs ${studentYearNum})`,
+        branchMatch: `${branchMatch} (form.targetBranch: ${form.targetBranch}, studentBranch: ${studentBranch})`,
+        notExpired: `${notExpired} (form.expiresAt: ${form.expiresAt})`
+      });
+      
+      const shouldShow = yearMatch && branchMatch && notExpired;
+      console.log(`Form ${form.title} should show: ${shouldShow}`);
+      
+      return shouldShow;
     });
+    
+    console.log('=== FINAL RESULTS ===');
+    console.log('Filtered forms for student:', filteredForms.map(f => ({
+      id: f.id,
+      title: f.title,
+      department: f.department
+    })));
+    
+    // Sort by createdAt in JavaScript instead of Firestore
+    return filteredForms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (error) {
     console.error('Error getting available feedback forms:', error);
     throw error;
@@ -1014,51 +1122,319 @@ export const getDetailedFeedbackResponses = async (adminDepartments: string | st
   }
 };
 
-// Debug function to check data sync issues
-export const debugDepartmentSync = async (adminDepartment: string) => {
+export const getFeedbackResponsesByStudent = async (studentId: string): Promise<any[]> => {
   try {
-    console.log('=== DEBUG: Department Sync Check ===');
-    console.log('Admin Department:', adminDepartment);
+    // Get regular responses by student
+    const regularQuery = query(
+      collection(db, FEEDBACK_RESPONSES_COLLECTION),
+      where('studentId', '==', studentId)
+    );
+    const regularSnapshot = await getDocs(regularQuery);
     
-    // Check all forms in the department
-    const allForms = await getAllFeedbackForms();
-    const deptForms = allForms.filter(form => form.department === adminDepartment);
-    console.log('Forms in department:', deptForms.length);
-    deptForms.forEach(form => {
-      console.log(`- Form: ${form.title} (${form.isAnonymous ? 'Anonymous' : 'Regular'})`);
-    });
-    
-    // Check responses for the department
-    const responses = await getDetailedFeedbackResponses(adminDepartment);
-    console.log('Responses in department:', responses.length);
-    responses.forEach(response => {
-      console.log(`- Response: ${response.formDetails?.title} - ${response.isAnonymous ? 'Anonymous' : response.studentDetails?.name}`);
-    });
-    
-    // Check grievances
-    const grievances = await getGrievancesByAdminDepartments(adminDepartment);
-    console.log('Grievances in department:', grievances.length);
-    grievances.forEach(grievance => {
-      console.log(`- Grievance: ${grievance.title} by ${grievance.studentName}`);
-    });
-    
-    // Check students
-    const students = await getStudentsByDepartment(adminDepartment);
-    console.log('Students in department:', students.length);
-    students.forEach(student => {
-      console.log(`- Student: ${student.name} (${student.rollNumber})`);
-    });
-    
-    console.log('=== END DEBUG ===');
-    
-    return {
-      forms: deptForms,
-      responses: responses,
-      grievances: grievances,
-      students: students
-    };
+    const responses = regularSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      submittedAt: doc.data().submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+      isAnonymous: false,
+    }));
+
+    // Sort by submittedAt in JavaScript
+    return responses.sort((a, b) => 
+      new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+    );
   } catch (error) {
-    console.error('Debug error:', error);
+    console.error('Error getting feedback responses by student:', error);
     throw error;
+  }
+};
+
+// CSV Export functionality
+export const exportResponsesToCSV = (responses: any[], formTitle: string): void => {
+  if (!responses || responses.length === 0) {
+    console.warn('No responses to export');
+    return;
+  }
+
+  // Get all unique questions from all responses
+  const allQuestions = new Set<string>();
+  responses.forEach(response => {
+    if (response.formDetails?.questions) {
+      response.formDetails.questions.forEach((q: any) => {
+        allQuestions.add(q.question);
+      });
+    }
+  });
+
+  const questionsList = Array.from(allQuestions);
+
+  // Create CSV headers
+  const headers = [
+    'Response ID',
+    'Student Name',
+    'Email',
+    'Roll Number',
+    'Year',
+    'Branch',
+    'Submitted At',
+    'Anonymous',
+    ...questionsList
+  ];
+
+  // Create CSV rows
+  const rows = responses.map(response => {
+    const row: any = {
+      'Response ID': response.id,
+      'Student Name': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.name || 'N/A'),
+      'Email': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.email || 'N/A'),
+      'Roll Number': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.rollNumber || 'N/A'),
+      'Year': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.year || 'N/A'),
+      'Branch': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.branch || 'N/A'),
+      'Submitted At': new Date(response.submittedAt).toLocaleString(),
+      'Anonymous': response.isAnonymous ? 'Yes' : 'No'
+    };
+
+    // Add responses to questions
+    questionsList.forEach(question => {
+      const questionData = response.formDetails?.questions?.find((q: any) => q.question === question);
+      if (questionData && response.responses) {
+        const answer = response.responses[questionData.id];
+        row[question] = Array.isArray(answer) ? answer.join(', ') : (answer || 'No response');
+      } else {
+        row[question] = 'No response';
+      }
+    });
+
+    return row;
+  });
+
+  // Convert to CSV format
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => headers.map(header => {
+      const value = row[header] || '';
+      // Escape quotes and wrap in quotes if contains comma
+      const escapedValue = String(value).replace(/"/g, '""');
+      return escapedValue.includes(',') ? `"${escapedValue}"` : escapedValue;
+    }).join(','))
+  ].join('\n');
+
+  // Download CSV file
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${formTitle.replace(/[^a-zA-Z0-9]/g, '_')}_responses.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+// New functions for getting forms and responses by creator
+export const getFeedbackFormsByCreator = async (creatorId: string): Promise<FeedbackForm[]> => {
+  try {
+    // Get regular forms created by this user
+    const regularQuery = query(
+      collection(db, FEEDBACK_FORMS_COLLECTION),
+      where('createdBy', '==', creatorId)
+    );
+    const regularSnapshot = await getDocs(regularQuery);
+    
+    // Get anonymous forms created by this user
+    const anonymousQuery = query(
+      collection(db, ANONYMOUS_FORMS_COLLECTION),
+      where('createdBy', '==', creatorId)
+    );
+    const anonymousSnapshot = await getDocs(anonymousQuery);
+    
+    // Combine both types of forms
+    const allForms = [
+      ...regularSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        isAnonymous: false,
+        createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: doc.data().expiresAt?.toDate?.()?.toISOString(),
+      })),
+      ...anonymousSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        isAnonymous: true,
+        createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: doc.data().expiresAt?.toDate?.()?.toISOString(),
+      }))
+    ];
+    
+    // Sort by createdAt in JavaScript
+    return allForms.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    ) as FeedbackForm[];
+  } catch (error) {
+    console.error('Error getting feedback forms by creator:', error);
+    throw error;
+  }
+};
+
+export const getFeedbackResponsesByCreator = async (creatorId: string): Promise<any[]> => {
+  try {
+    // Get all forms created by this user (without orderBy to avoid index requirement)
+    const userForms = await getFeedbackFormsByCreator(creatorId);
+    const formIds = userForms.map(form => form.id);
+    
+    if (formIds.length === 0) {
+      return [];
+    }
+    
+    // Get regular responses for user's forms
+    const regularResponsesPromises = formIds.map(async (formId) => {
+      const q = query(
+        collection(db, FEEDBACK_RESPONSES_COLLECTION),
+        where('formId', '==', formId)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        submittedAt: doc.data().submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        isAnonymous: false,
+      }));
+    });
+    
+    // Get anonymous responses for user's forms
+    const anonymousResponsesPromises = formIds.map(async (formId) => {
+      const q = query(
+        collection(db, ANONYMOUS_RESPONSES_COLLECTION),
+        where('formId', '==', formId)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        submittedAt: doc.data().submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        isAnonymous: true,
+      }));
+    });
+    
+    const regularResponses = await Promise.all(regularResponsesPromises);
+    const anonymousResponses = await Promise.all(anonymousResponsesPromises);
+    
+    // Flatten and combine all responses
+    const allResponses = [
+      ...regularResponses.flat(),
+      ...anonymousResponses.flat()
+    ];
+
+    // Enrich responses with student and form details
+    const enrichedResponses = await Promise.all(allResponses.map(async (response: any) => {
+      // Get form details
+      const form = userForms.find(f => f.id === response.formId);
+      
+      // Get student details if not anonymous
+      let studentDetails = null;
+      if (!response.isAnonymous && response.studentId) {
+        try {
+          const student = await getUserById(response.studentId);
+          if (student) {
+            studentDetails = {
+              name: student.name,
+              email: student.email,
+              rollNumber: student.rollNumber,
+              year: student.year,
+              branch: student.branch,
+            };
+          }
+        } catch (error) {
+          console.error('Error fetching student details:', error);
+        }
+      }
+      
+      return {
+        ...response,
+        formDetails: form ? {
+          title: form.title,
+          description: form.description,
+          targetBranch: form.targetBranch,
+          targetYear: form.targetYear,
+          questions: form.questions,
+        } : null,
+        studentDetails,
+      };
+    }));
+    
+    // Sort by submittedAt in JavaScript instead of Firestore
+    return enrichedResponses.sort((a, b) => 
+      new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+    );
+  } catch (error) {
+    console.error('Error getting feedback responses by creator:', error);
+    throw error;
+  }
+};
+
+export const getFeedbackFormById = async (formId: string): Promise<FeedbackForm | null> => {
+  try {
+    // First try regular forms
+    const regularDocRef = doc(db, FEEDBACK_FORMS_COLLECTION, formId);
+    const regularDocSnap = await getDoc(regularDocRef);
+    
+    if (regularDocSnap.exists()) {
+      const data = regularDocSnap.data();
+      return {
+        id: regularDocSnap.id,
+        ...data,
+        isAnonymous: false,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+    }
+    
+    // Then try anonymous forms
+    const anonymousDocRef = doc(db, ANONYMOUS_FORMS_COLLECTION, formId);
+    const anonymousDocSnap = await getDoc(anonymousDocRef);
+    
+    if (anonymousDocSnap.exists()) {
+      const data = anonymousDocSnap.data();
+      return {
+        id: anonymousDocSnap.id,
+        ...data,
+        isAnonymous: true,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting feedback form by ID:', error);
+    throw error;
+  }
+};
+
+export const checkIfStudentSubmittedForm = async (studentId: string, formId: string): Promise<boolean> => {
+  try {
+    // Check regular responses
+    const regularQuery = query(
+      collection(db, FEEDBACK_RESPONSES_COLLECTION),
+      where('studentId', '==', studentId),
+      where('formId', '==', formId)
+    );
+    const regularSnapshot = await getDocs(regularQuery);
+    
+    if (regularSnapshot.size > 0) {
+      return true;
+    }
+
+    // Check anonymous responses (if they contain student info)
+    const anonymousQuery = query(
+      collection(db, ANONYMOUS_RESPONSES_COLLECTION),
+      where('studentId', '==', studentId),
+      where('formId', '==', formId)
+    );
+    const anonymousSnapshot = await getDocs(anonymousQuery);
+    
+    return anonymousSnapshot.size > 0;
+  } catch (error) {
+    console.error('Error checking if student submitted form:', error);
+    return false;
   }
 };

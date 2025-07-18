@@ -10,47 +10,14 @@ import { StudentDashboard } from './components/Dashboard/StudentDashboard';
 import { AdminDashboard } from './components/Dashboard/AdminDashboard';
 import { SuperAdminDashboard } from './components/Dashboard/SuperAdminDashboard';
 import { AnonymousFeedback } from './components/AnonymousFeedback';
-import { User } from './types';
-import { createUser } from './services/firebaseService';
+import { FeedbackFormFill } from './components/FeedbackFormFill';
+import { GrievanceDetail } from './components/GrievanceDetail';
 
 // Initialize demo data
 const initializeDemoData = () => {
   // This function is now handled by Firebase
   // We can create demo users directly in Firebase console or through admin SDK
   console.log('Demo data initialization moved to Firebase');
-};
-
-// Helper function to create demo users (run once)
-const createDemoUsers = async () => {
-  try {
-    const demoUsers: User[] = [
-      {
-        email: 'student@urcet.edu',
-        name: 'Rajesh Kumar',
-        role: 'student',
-        rollNumber: '21CS001',
-        year: '3',
-        branch: 'CSE',
-      },
-      {
-        email: 'hod.cse@urcet.edu',
-        name: 'Dr. Priya Sharma',
-        role: 'admin',
-        department: 'CSE',
-      },
-      {
-        email: 'admin@urcet.edu',
-        name: 'System Administrator',
-        role: 'super_admin',
-      },
-    ];
-    
-    // Note: In production, create these users through Firebase console
-    // or use Firebase Admin SDK for initial setup
-    console.log('Demo users should be created through Firebase console:', demoUsers);
-  } catch (error) {
-    console.error('Error creating demo users:', error);
-  }
 };
 
 const DashboardRouter: React.FC = () => {
@@ -91,6 +58,16 @@ function App() {
             <Route path="/login" element={<LoginForm />} />
             <Route path="/register" element={<RegisterForm />} />
             <Route path="/anonymous" element={<AnonymousFeedback />} />
+            <Route path="/forms/:formId" element={
+              <PrivateRoute>
+                <FeedbackFormFill />
+              </PrivateRoute>
+            } />
+            <Route path="/grievances/:grievanceId" element={
+              <PrivateRoute>
+                <GrievanceDetail />
+              </PrivateRoute>
+            } />
             <Route path="/unauthorized" element={
               <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center">

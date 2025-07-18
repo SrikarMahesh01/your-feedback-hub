@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Card, Typography, Alert, Divider } from 'antd';
+import { Form, Input, Button, Card, Typography, Alert } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
@@ -75,20 +75,6 @@ export const LoginForm: React.FC = () => {
               </Button>
             </Form.Item>
           </Form>
-
-          <Divider plain>Demo Accounts</Divider>
-          
-          <div className="space-y-2 text-sm">
-            <div className="bg-gray-50 p-3 rounded">
-              <strong>Student:</strong> student@urcet.edu / password
-            </div>
-            <div className="bg-gray-50 p-3 rounded">
-              <strong>HOD (CSE):</strong> hod.cse@urcet.edu / password
-            </div>
-            <div className="bg-gray-50 p-3 rounded">
-              <strong>Super Admin:</strong> admin@urcet.edu / password
-            </div>
-          </div>
 
           <div className="text-center mt-6">
             <Text type="secondary">

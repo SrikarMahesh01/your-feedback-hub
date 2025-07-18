@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { User } from '../../types';
+import { formatText } from '../../utils/textFormatter';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -31,7 +32,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
       {
         key: 'dashboard',
         icon: <DashboardOutlined />,
-        label: 'Dashboard',
+        label: formatText.title('Dashboard'),
       },
     ];
 
@@ -41,17 +42,17 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         {
           key: 'grievances',
           icon: <FileTextOutlined />,
-          label: 'My Grievances',
+          label: formatText.title('My Grievances'),
         },
         {
           key: 'feedback',
           icon: <FormOutlined />,
-          label: 'Feedback Forms',
+          label: formatText.title('Feedback Forms'),
         },
         {
           key: 'history',
           icon: <MessageOutlined />,
-          label: 'Submission History',
+          label: formatText.title('Submission History'),
         },
       ];
     }
@@ -62,17 +63,17 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         {
           key: 'grievances',
           icon: <FileTextOutlined />,
-          label: 'Department Grievances',
+          label: formatText.title('Department Grievances'),
         },
         {
           key: 'forms',
           icon: <FormOutlined />,
-          label: 'Manage Forms',
+          label: formatText.title('Manage Forms'),
         },
         {
           key: 'responses',
           icon: <MessageOutlined />,
-          label: 'Form Responses',
+          label: formatText.title('Form Responses'),
         },
         {
           key: 'students',
@@ -160,10 +161,35 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     <Layout className="min-h-screen">
       <Sider trigger={null} collapsible collapsed={collapsed} theme="light">
         <div className="p-4 text-center border-b">
-          <Title level={4} className={`m-0 text-blue-600 ${collapsed ? 'hidden' : ''}`}>
-            yoUR Hub
-          </Title>
-          {collapsed && <Title level={4} className="m-0 text-blue-600">yH</Title>}
+          {!collapsed ? (
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <Title level={4} className="m-0 text-blue-600">
+                  yoUR Feedback Hub
+                </Title>
+              </div>
+              <Button
+                type="text"
+                icon={<MenuFoldOutlined />}
+                onClick={() => setCollapsed(!collapsed)}
+                className="text-lg ml-2"
+                size="small"
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <Title level={4} className="m-0 text-blue-600 mb-2">
+                UR
+              </Title>
+              <Button
+                type="text"
+                icon={<MenuUnfoldOutlined />}
+                onClick={() => setCollapsed(!collapsed)}
+                className="text-lg"
+                size="small"
+              />
+            </div>
+          )}
         </div>
         <Menu
           mode="inline"
@@ -193,12 +219,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
       </Sider>
       <Layout>
         <Header className="bg-white px-6 border-b flex items-center justify-between">
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            className="text-lg"
-          />
+          <div className="flex items-center">
+            <Title level={3} className="m-0 text-gray-800">
+              {user?.role === 'student' ? 'Student Dashboard' : 
+               user?.role === 'admin' ? 'HOD Dashboard' : 
+               'Super Admin Dashboard'}
+            </Title>
+          </div>
           <div className="flex items-center gap-4">
             <Badge count={3} size="small">
               <Button type="text" icon={<MessageOutlined />} />

@@ -50,6 +50,9 @@ export interface FormQuestion {
   question: string;
   options?: string[];
   required: boolean;
+  placeholder?: string;
+  maxLength?: number;
+  minLength?: number;
 }
 
 export interface FeedbackResponse {

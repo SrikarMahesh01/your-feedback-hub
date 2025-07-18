@@ -24,6 +24,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { changePassword, updateUserProfile } from '../../services/firebaseService';
 import { User } from '../../types';
+import { formatText } from '../../utils/textFormatter';
 
 const { Title, Text } = Typography;
 
@@ -122,16 +123,7 @@ export const Profile: React.FC = () => {
   };
 
   const getRoleDisplay = (role: User['role']) => {
-    switch (role) {
-      case 'student':
-        return 'Student';
-      case 'admin':
-        return 'HOD';
-      case 'super_admin':
-        return 'Super Admin';
-      default:
-        return 'User';
-    }
+    return formatText.role(role);
   };
 
   const getRoleColor = (role: User['role']) => {

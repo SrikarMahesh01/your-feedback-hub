@@ -31,6 +31,7 @@ import {
   BarChartOutlined
 } from '@ant-design/icons';
 import { User, Grievance, FeedbackForm } from '../../types';
+import { formatText } from '../../utils/textFormatter';
 import { 
   getAllUsers, 
   getAllGrievances, 
@@ -410,7 +411,7 @@ export const SuperAdminDashboard: React.FC = () => {
             </Tag>
           ));
         }
-        return <Tag color="blue">{department}</Tag>;
+        return <Tag color="blue">{formatText.department(department)}</Tag>;
       },
     },
     {
@@ -485,7 +486,7 @@ export const SuperAdminDashboard: React.FC = () => {
       render: (status: 'pending' | 'in_progress' | 'resolved', record: Grievance) => (
         <Space>
           <Tag color={status === 'pending' ? 'orange' : status === 'in_progress' ? 'blue' : 'green'}>
-            {status.replace('_', ' ')}
+            {formatText.tag(status)}
           </Tag>
           <Select
             size="small"
@@ -494,7 +495,7 @@ export const SuperAdminDashboard: React.FC = () => {
             style={{ width: 120 }}
           >
             <Select.Option value="pending">Pending</Select.Option>
-            <Select.Option value="in_progress">In Progress</Select.Option>
+            <Select.Option value="in_progress">in progress</Select.Option>
             <Select.Option value="resolved">Resolved</Select.Option>
           </Select>
         </Space>
@@ -612,7 +613,7 @@ export const SuperAdminDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Total Users"
+              title={formatText.title("total users")}
               value={stats.totalUsers}
               prefix={<TeamOutlined />}
             />
@@ -621,7 +622,7 @@ export const SuperAdminDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Active Students"
+              title={formatText.title("active students")}
               value={stats.totalStudents}
               prefix={<UserOutlined />}
             />
@@ -630,7 +631,7 @@ export const SuperAdminDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Department Admins"
+              title={formatText.title("department admins")}
               value={stats.totalAdmins}
               prefix={<SettingOutlined />}
             />
@@ -639,7 +640,7 @@ export const SuperAdminDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Total Grievances"
+              title={formatText.title("total grievances")}
               value={stats.totalGrievances}
               prefix={<FileTextOutlined />}
             />
@@ -648,7 +649,7 @@ export const SuperAdminDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Pending Grievances"
+              title={formatText.title("pending grievances")}
               value={stats.pendingGrievances}
               prefix={<FileTextOutlined />}
               valueStyle={{ color: stats.pendingGrievances > 5 ? '#ff4d4f' : '#52c41a' }}
@@ -658,7 +659,7 @@ export const SuperAdminDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Active Forms"
+              title={formatText.title("active forms")}
               value={stats.totalForms}
               prefix={<FormOutlined />}
             />

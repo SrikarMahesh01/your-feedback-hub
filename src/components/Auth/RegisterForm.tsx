@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Card, Typography, Alert, Select } from 'antd';
-import { UserOutlined, MailOutlined, IdcardOutlined, LockOutlined } from '@ant-design/icons';
-import { useAuth } from '../../contexts/AuthContext';
+import { Card, Form, Input, Button, Typography, Alert, Select } from 'antd';
+import { UserOutlined, LockOutlined, MailOutlined, IdcardOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../../config/firebase';
+import { createUserWithId } from '../../services/firebaseService';
 import { DEPARTMENTS, YEARS } from '../../types';
+import { formatText } from '../../utils/textFormatter';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -68,7 +72,7 @@ export const RegisterForm: React.FC = () => {
       <div className="w-full max-w-md">
         <Card className="shadow-lg">
           <div className="text-center mb-6">
-            <Title level={2} className="text-blue-600 mb-2">Student Registration</Title>
+            <Title level={2} className="text-blue-600 mb-2">{formatText.title('student registration')}</Title>
             <Text type="secondary">Join yoUR Feedback Hub</Text>
           </div>
 

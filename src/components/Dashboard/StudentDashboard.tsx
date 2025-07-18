@@ -3,10 +3,12 @@ import { Card, Button, Table, Tag, Typography, Row, Col, Statistic, Space, Modal
 import { PlusOutlined, FileTextOutlined, FormOutlined, HistoryOutlined } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { Grievance, FeedbackForm } from '../../types';
+import { formatText } from '../../utils/textFormatter';
 import { 
   createGrievance, 
   getGrievancesByStudent, 
   getAvailableFeedbackForms,
+  getFeedbackResponsesByStudent,
   sendWebhookNotification
 } from '../../services/firebaseService';
 import { Profile } from '../Profile/Profile';
@@ -21,6 +23,7 @@ export const StudentDashboard: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [grievances, setGrievances] = useState<Grievance[]>([]);
   const [availableForms, setAvailableForms] = useState<FeedbackForm[]>([]);
+  const [submittedResponses, setSubmittedResponses] = useState<any[]>([]);
   const [isGrievanceModalVisible, setIsGrievanceModalVisible] = useState(false);
   const [form] = Form.useForm();
 
@@ -51,12 +54,21 @@ export const StudentDashboard: React.FC = () => {
       }
     };
 
+    const handleFormSubmission = () => {
+      console.log('Form submitted, refreshing data...');
+      // Refresh the data when a form is submitted
+      loadSubmittedResponses();
+      loadAvailableForms();
+    };
+
     window.addEventListener('student-navigation', handleStudentNavigation as EventListener);
     window.addEventListener('user-navigation', handleUserNavigation as EventListener);
-    
+    window.addEventListener('form-submitted', handleFormSubmission as EventListener);
+
     return () => {
       window.removeEventListener('student-navigation', handleStudentNavigation as EventListener);
       window.removeEventListener('user-navigation', handleUserNavigation as EventListener);
+      window.removeEventListener('form-submitted', handleFormSubmission as EventListener);
     };
   }, []);
 
@@ -68,7 +80,10 @@ export const StudentDashboard: React.FC = () => {
     if (currentView === 'dashboard' || currentView === 'feedback') {
       loadAvailableForms();
     }
-  }, [user?.id, currentView]);
+    if (currentView === 'dashboard' || currentView === 'history') {
+      loadSubmittedResponses();
+    }
+  }, [user, currentView]);
 
   const loadGrievances = async () => {
     if (!user?.id) return;
@@ -84,11 +99,57 @@ export const StudentDashboard: React.FC = () => {
   const loadAvailableForms = async () => {
     if (!user) return;
     
+    console.log('=== STUDENT DASHBOARD DEBUG ===');
+    console.log('Full user object:', user);
+    console.log('User details for form filtering:', { 
+      year: user.year, 
+      branch: user.branch, 
+      department: user.department 
+    });
+    
+    if (!user.year || !user.branch) {
+      console.error('Missing required user data:', { year: user.year, branch: user.branch });
+      return;
+    }
+    
     try {
-      const userForms = await getAvailableFeedbackForms(user.year, user.branch);
+      // For students, branch and department are typically the same
+      const studentDepartment = Array.isArray(user.department) 
+        ? user.department[0] 
+        : user.department || user.branch;
+      
+      console.log('Final parameters for getAvailableFeedbackForms:', {
+        year: user.year,
+        branch: user.branch,
+        department: studentDepartment
+      });
+      
+      const userForms = await getAvailableFeedbackForms(user.year, user.branch, studentDepartment, user.id);
+      console.log('Available forms loaded:', userForms.length);
+      console.log('Form details:', userForms.map(form => ({
+        id: form.id,
+        title: form.title,
+        targetYear: form.targetYear,
+        targetBranch: form.targetBranch,
+        department: form.department,
+        isActive: form.isActive
+      })));
+      
       setAvailableForms(userForms);
     } catch (error) {
       console.error('Error loading available forms:', error);
+    }
+  };
+
+  const loadSubmittedResponses = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const responses = await getFeedbackResponsesByStudent(user.id);
+      setSubmittedResponses(responses);
+      console.log('Loaded submitted responses:', responses.length);
+    } catch (error) {
+      console.error('Error loading submitted responses:', error);
     }
   };
 
@@ -155,23 +216,23 @@ export const StudentDashboard: React.FC = () => {
 
   const grievanceColumns = [
     {
-      title: 'Title',
+      title: formatText.title('title'),
       dataIndex: 'title',
       key: 'title',
     },
     {
-      title: 'Category',
+      title: formatText.title('category'),
       dataIndex: 'category',
       key: 'category',
-      render: (category: string) => <Tag>{category}</Tag>,
+      render: (category: string) => <Tag>{formatText.tag(category)}</Tag>,
     },
     {
-      title: 'Department',
+      title: formatText.title('department'),
       dataIndex: 'department',
       key: 'department',
     },
     {
-      title: 'Status',
+      title: formatText.title('status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => {
@@ -181,20 +242,20 @@ export const StudentDashboard: React.FC = () => {
           resolved: 'green',
           closed: 'gray',
         };
-        return <Tag color={colors[status as keyof typeof colors]}>{status.replace('_', ' ')}</Tag>;
+        return <Tag color={colors[status as keyof typeof colors]}>{formatText.tag(status)}</Tag>;
       },
     },
     {
-      title: 'Priority',
+      title: formatText.title('priority'),
       dataIndex: 'priority',
       key: 'priority',
       render: (priority: string) => {
         const colors = { low: 'green', medium: 'orange', high: 'red' };
-        return <Tag color={colors[priority as keyof typeof colors]}>{priority}</Tag>;
+        return <Tag color={colors[priority as keyof typeof colors]}>{formatText.tag(priority)}</Tag>;
       },
     },
     {
-      title: 'Submitted',
+      title: formatText.title('submitted'),
       dataIndex: 'submittedAt',
       key: 'submittedAt',
       render: (date: string) => new Date(date).toLocaleDateString(),
@@ -203,33 +264,60 @@ export const StudentDashboard: React.FC = () => {
 
   const formColumns = [
     {
-      title: 'Form Title',
+      title: formatText.title('form title'),
       dataIndex: 'title',
       key: 'title',
     },
     {
-      title: 'Department',
+      title: formatText.title('description'),
+      dataIndex: 'description',
+      key: 'description',
+      render: (text: string) => (
+        <div style={{ maxWidth: 200 }}>
+          {text?.length > 100 ? `${text.substring(0, 100)}...` : text}
+        </div>
+      ),
+    },
+    {
+      title: formatText.title('department'),
       dataIndex: 'department',
       key: 'department',
     },
     {
-      title: 'Created',
+      title: formatText.title('target year'),
+      dataIndex: 'targetYear',
+      key: 'targetYear',
+      render: (year: string) => year === 'all' ? 'All Years' : `Year ${year}`,
+    },
+    {
+      title: formatText.title('target branch'),
+      dataIndex: 'targetBranch',
+      key: 'targetBranch',
+      render: (branch: string) => branch === 'all' ? 'All Branches' : branch,
+    },
+    {
+      title: formatText.title('created'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       render: (date: string) => new Date(date).toLocaleDateString(),
     },
     {
-      title: 'Action',
+      title: formatText.title('action'),
       key: 'action',
-      render: (_: any, record: FeedbackForm) => (
-        <Button
-          type="primary"
-          size="small"
-          onClick={() => window.open(`/forms/${record.id}`, '_blank')}
-        >
-          Fill Form
-        </Button>
-      ),
+      render: (_: any, record: FeedbackForm) => {
+        const isSubmitted = submittedResponses.some(response => response.formId === record.id);
+        return isSubmitted ? (
+          <Tag color="green">Submitted</Tag>
+        ) : (
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => window.open(`/forms/${record.id}`, '_blank')}
+          >
+            Fill Form
+          </Button>
+        );
+      },
     },
   ];
 
@@ -238,6 +326,7 @@ export const StudentDashboard: React.FC = () => {
     pendingGrievances: grievances.filter(g => g.status === 'pending').length,
     resolvedGrievances: grievances.filter(g => g.status === 'resolved').length,
     availableForms: availableForms.length,
+    submittedResponses: submittedResponses.length,
   };
 
   const renderCurrentView = () => {
@@ -278,7 +367,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="Total Grievances"
+              title={formatText.title("total grievances")}
               value={stats.totalGrievances}
               prefix={<FileTextOutlined />}
             />
@@ -287,7 +376,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="Pending"
+              title={formatText.title("pending")}
               value={stats.pendingGrievances}
               valueStyle={{ color: '#faad14' }}
             />
@@ -296,7 +385,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="Resolved"
+              title={formatText.title("resolved")}
               value={stats.resolvedGrievances}
               valueStyle={{ color: '#52c41a' }}
             />
@@ -304,7 +393,7 @@ export const StudentDashboard: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title="All Grievances">
+      <Card title={formatText.title("all grievances")}>
         <Table
           columns={grievanceColumns}
           dataSource={grievances}
@@ -320,7 +409,7 @@ export const StudentDashboard: React.FC = () => {
       <div>
         <Title level={2}>Feedback Forms</Title>
         <Paragraph type="secondary">
-          Available feedback forms for your department and year
+          Available feedback forms for your department ({user?.department || user?.branch || 'Not specified'}) and year ({user?.year ? `Year ${user.year}` : 'No year specified'})
         </Paragraph>
       </div>
 
@@ -328,7 +417,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={12}>
           <Card>
             <Statistic
-              title="Available Forms"
+              title={formatText.title("available forms")}
               value={stats.availableForms}
               prefix={<FormOutlined />}
             />
@@ -337,7 +426,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={12}>
           <Card>
             <Statistic
-              title="Completed Forms"
+              title={formatText.title("completed forms")}
               value={0}
               valueStyle={{ color: '#52c41a' }}
             />
@@ -345,13 +434,25 @@ export const StudentDashboard: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title="Available Feedback Forms">
-        <Table
-          columns={formColumns}
-          dataSource={availableForms}
-          rowKey="id"
-          pagination={{ pageSize: 10 }}
-        />
+      <Card title={formatText.title("available feedback forms")}>
+        {availableForms.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '50px' }}>
+            <FormOutlined style={{ fontSize: '48px', color: '#d9d9d9' }} />
+            <p style={{ color: '#999', marginTop: '16px' }}>
+              No feedback forms available for your department ({user?.department || user?.branch || 'Not specified'}) and year ({user?.year || 'Not specified'})
+            </p>
+            <p style={{ color: '#999', fontSize: '14px' }}>
+              Check back later or contact your department admin if you expect to see forms here.
+            </p>
+          </div>
+        ) : (
+          <Table
+            columns={formColumns}
+            dataSource={availableForms}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+          />
+        )}
       </Card>
     </div>
   );
@@ -369,7 +470,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="Total Submissions"
+              title={formatText.title("total submissions")}
               value={stats.totalGrievances}
               prefix={<HistoryOutlined />}
             />
@@ -378,7 +479,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="This Month"
+              title={formatText.title("this month")}
               value={grievances.filter(g => {
                 const grievanceDate = new Date(g.submittedAt);
                 const currentDate = new Date();
@@ -392,7 +493,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title="Success Rate"
+              title={formatText.title("success rate")}
               value={Math.round((stats.resolvedGrievances / stats.totalGrievances) * 100) || 0}
               suffix="%"
               valueStyle={{ color: '#52c41a' }}
@@ -401,27 +502,27 @@ export const StudentDashboard: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title="Submission History">
+      <Card title={formatText.title("submission history")}>
         <Table
           columns={[
             {
-              title: 'Title',
+              title: formatText.title('title'),
               dataIndex: 'title',
               key: 'title',
             },
             {
-              title: 'Type',
+              title: formatText.title('type'),
               key: 'type',
               render: () => <Tag color="blue">Grievance</Tag>,
             },
             {
-              title: 'Category',
+              title: formatText.title('category'),
               dataIndex: 'category',
               key: 'category',
-              render: (category: string) => <Tag>{category}</Tag>,
+              render: (category: string) => <Tag>{formatText.tag(category)}</Tag>,
             },
             {
-              title: 'Status',
+              title: formatText.title('status'),
               dataIndex: 'status',
               key: 'status',
               render: (status: string) => {
@@ -431,11 +532,11 @@ export const StudentDashboard: React.FC = () => {
                   resolved: 'green',
                   closed: 'gray',
                 };
-                return <Tag color={colors[status as keyof typeof colors]}>{status.replace('_', ' ')}</Tag>;
+                return <Tag color={colors[status as keyof typeof colors]}>{formatText.tag(status)}</Tag>;
               },
             },
             {
-              title: 'Submitted',
+              title: formatText.title('submitted'),
               dataIndex: 'submittedAt',
               key: 'submittedAt',
               render: (date: string) => new Date(date).toLocaleDateString(),
@@ -462,7 +563,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Total Grievances"
+              title={formatText.title("total grievances")}
               value={stats.totalGrievances}
               prefix={<FileTextOutlined />}
             />
@@ -471,7 +572,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Pending"
+              title={formatText.title("pending")}
               value={stats.pendingGrievances}
               valueStyle={{ color: '#faad14' }}
             />
@@ -480,7 +581,7 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Resolved"
+              title={formatText.title("resolved")}
               value={stats.resolvedGrievances}
               valueStyle={{ color: '#52c41a' }}
             />
@@ -489,23 +590,33 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Available Forms"
+              title={formatText.title("available forms")}
               value={stats.availableForms}
               prefix={<FormOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic
+              title={formatText.title("forms submitted")}
+              value={stats.submittedResponses}
+              prefix={<FormOutlined />}
+              valueStyle={{ color: '#1890ff' }}
             />
           </Card>
         </Col>
       </Row>
 
       <Card
-        title="Submit New Grievance"
+        title={formatText.title("submit new grievance")}
         extra={
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setIsGrievanceModalVisible(true)}
           >
-            Submit Grievance
+            {formatText.title("submit grievance")}
           </Button>
         }
       >
@@ -516,17 +627,18 @@ export const StudentDashboard: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <Card title="My Grievances" extra={<HistoryOutlined />}>
+          <Card title={formatText.title("my grievances")} extra={<HistoryOutlined />}>
             <Table
               dataSource={grievances}
+              rowKey="id"
               columns={[
                 {
-                  title: 'Title',
+                  title: formatText.title('title'),
                   dataIndex: 'title',
                   key: 'title',
                 },
                 {
-                  title: 'Status',
+                  title: formatText.title('status'),
                   dataIndex: 'status',
                   key: 'status',
                   render: (status: string) => {
@@ -536,7 +648,7 @@ export const StudentDashboard: React.FC = () => {
                       resolved: 'green',
                       closed: 'gray',
                     };
-                    return <Tag color={colors[status as keyof typeof colors]}>{status.replace('_', ' ')}</Tag>;
+                    return <Tag color={colors[status as keyof typeof colors]}>{formatText.tag(status)}</Tag>;
                   },
                 },
                 {
@@ -553,22 +665,23 @@ export const StudentDashboard: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title="Available Forms" extra={<FormOutlined />}>
+          <Card title={formatText.title("available forms")} extra={<FormOutlined />}>
             <Table
               dataSource={availableForms}
+              rowKey="id"
               columns={[
                 {
-                  title: 'Form Title',
+                  title: formatText.title('form title'),
                   dataIndex: 'title',
                   key: 'title',
                 },
                 {
-                  title: 'Department',
+                  title: formatText.title('department'),
                   dataIndex: 'department',
                   key: 'department',
                 },
                 {
-                  title: 'Action',
+                  title: formatText.title('action'),
                   key: 'action',
                   render: (_: any, record: FeedbackForm) => (
                     <Button
@@ -597,7 +710,7 @@ export const StudentDashboard: React.FC = () => {
       
       {/* Grievance Modal */}
       <Modal
-        title="Submit New Grievance"
+        title={formatText.title("submit new grievance")}
         open={isGrievanceModalVisible}
         onCancel={() => setIsGrievanceModalVisible(false)}
         footer={null}
@@ -681,7 +794,7 @@ export const StudentDashboard: React.FC = () => {
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit">
-                Submit Grievance
+                {formatText.title("submit grievance")}
               </Button>
               <Button onClick={() => setIsGrievanceModalVisible(false)}>
                 Cancel

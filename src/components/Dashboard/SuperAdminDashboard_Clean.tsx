@@ -178,16 +178,6 @@ export const SuperAdminDashboard: React.FC = () => {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: 'student' | 'admin' | 'super_admin') => {
-    try {
-      await assignUserRole(userId, newRole);
-      await loadUsers();
-      message.success('User role updated successfully!');
-    } catch (error) {
-      console.error('Error updating user role:', error);
-      message.error('Failed to update user role. Please try again.');
-    }
-  };
 
   const handleStatusToggle = async (userId: string, currentStatus: boolean) => {
     try {
@@ -439,7 +429,7 @@ export const SuperAdminDashboard: React.FC = () => {
           <Select
             size="small"
             value={status}
-            onChange={(value) => handleUpdateGrievanceStatus(record.id, value)}
+            onChange={(value) => handleUpdateGrievanceStatus(record.id, value as 'pending' | 'in_progress' | 'resolved')}
             style={{ width: 120 }}
           >
             <Select.Option value="pending">Pending</Select.Option>
