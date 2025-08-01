@@ -30,7 +30,7 @@ import {
   UserOutlined,
   BarChartOutlined
 } from '@ant-design/icons';
-import { User, Grievance, FeedbackForm } from '../../types';
+import { User, Grievance, FeedbackForm, DEPARTMENTS } from '../../types';
 import { formatText } from '../../utils/textFormatter';
 import { 
   getAllUsers, 
@@ -143,7 +143,7 @@ export const SuperAdminDashboard: React.FC = () => {
   const loadFeedbackForms = async () => {
     try {
       const allForms: FeedbackForm[] = [];
-      const departments = ['CSE', 'AI ML', 'AI DS', 'ECE', 'EEE', 'IT', 'MECH'];
+      const departments = [...DEPARTMENTS];
       
       for (const dept of departments) {
         const deptForms = await getFeedbackFormsByDepartment(dept);
@@ -840,7 +840,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 }
               }}
             >
-              {['CSE', 'AI ML', 'AI DS', 'ECE', 'EEE', 'IT', 'MECH'].map(dept => (
+              {DEPARTMENTS.map(dept => (
                 <Select.Option key={dept} value={dept}>{dept}</Select.Option>
               ))}
             </Select>
@@ -915,7 +915,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 }
               }}
             >
-              {['CSE', 'AI ML', 'AI DS', 'ECE', 'EEE', 'IT', 'MECH'].map(dept => (
+              {DEPARTMENTS.map(dept => (
                 <Select.Option key={dept} value={dept}>{dept}</Select.Option>
               ))}
             </Select>

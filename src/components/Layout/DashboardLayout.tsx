@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Avatar, Dropdown, Button, Typography, Badge } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Button, Typography } from 'antd';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   UserOutlined,
   LogoutOutlined,
@@ -10,7 +11,7 @@ import {
   FormOutlined,
   SettingOutlined,
   TeamOutlined,
-  MessageOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { User } from '../../types';
@@ -26,6 +27,8 @@ interface DashboardLayoutProps {
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const getMenuItems = (userRole: User['role']) => {
     const baseItems = [
@@ -51,7 +54,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         },
         {
           key: 'history',
-          icon: <MessageOutlined />,
+          icon: <HistoryOutlined />,
           label: formatText.title('Submission History'),
         },
       ];
@@ -66,19 +69,24 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           label: formatText.title('Department Grievances'),
         },
         {
-          key: 'forms',
+          key: 'feedbackforms',
           icon: <FormOutlined />,
-          label: formatText.title('Manage Forms'),
+          label: formatText.title('Feedback Forms'),
         },
         {
-          key: 'responses',
-          icon: <MessageOutlined />,
-          label: formatText.title('Form Responses'),
+          key: 'anonymous-forms',
+          icon: <FormOutlined />,
+          label: formatText.title('Anonymous Forms'),
         },
         {
           key: 'students',
           icon: <TeamOutlined />,
-          label: 'Students',
+          label: formatText.title('Students'),
+        },
+        {
+          key: 'analytics',
+          icon: <SettingOutlined />,
+          label: formatText.title('Analytics'),
         },
       ];
     }
@@ -117,15 +125,84 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     return baseItems;
   };
 
+  // Get current selected key based on location
+  const getCurrentSelectedKey = () => {
+    const path = location.pathname;
+    if (path === '/dashboard') return 'dashboard';
+    if (path === '/admin/dashboard') return 'dashboard';
+    if (path === '/super-admin/dashboard') return 'dashboard';
+    if (path === '/feedbackforms') return 'feedbackforms';
+    if (path === '/admin/anonymous-forms') return 'anonymous-forms';
+    if (path === '/students') return 'students';
+    if (path === '/analytics') return 'analytics';
+    if (path === '/grievances') return 'grievances';
+    if (path === '/profile') return 'profile';
+    // Student routes
+    if (path === '/student/dashboard') return 'dashboard';
+    if (path === '/student/feedback') return 'feedback';
+    if (path === '/student/history') return 'history';
+    if (path === '/student/grievances') return 'grievances';
+    return 'dashboard';
+  };
+
   const handleMenuClick = (key: string) => {
     if (key === 'profile') {
-      // Emit custom event for all user types to handle profile navigation
-      const event = new CustomEvent('user-navigation', {
-        detail: { key }
-      });
-      window.dispatchEvent(event);
+      navigate('/profile');
     } else if (key === 'logout') {
       logout();
+    }
+  };
+
+  const handleMenuSelect = (key: string) => {
+    switch (key) {
+      case 'dashboard':
+        if (user?.role === 'student') {
+          navigate('/student/dashboard');
+        } else if (user?.role === 'admin') {
+          navigate('/admin/dashboard');
+        } else if (user?.role === 'super_admin') {
+          navigate('/super-admin/dashboard');
+        } else {
+          navigate('/dashboard');
+        }
+        break;
+      case 'feedbackforms':
+        navigate('/feedbackforms');
+        break;
+      case 'anonymous-forms':
+        navigate('/admin/anonymous-forms');
+        break;
+      case 'students':
+        navigate('/students');
+        break;
+      case 'analytics':
+        navigate('/analytics');
+        break;
+      case 'grievances':
+        if (user?.role === 'student') {
+          navigate('/student/grievances');
+        } else {
+          navigate('/grievances');
+        }
+        break;
+      case 'feedback':
+        if (user?.role === 'student') {
+          navigate('/student/feedback');
+        }
+        break;
+      case 'history':
+        if (user?.role === 'student') {
+          navigate('/student/history');
+        }
+        break;
+      default:
+        if (user?.role === 'super_admin') {
+          const event = new CustomEvent('sidebar-navigation', {
+            detail: { key }
+          });
+          window.dispatchEvent(event);
+        }
+        break;
     }
   };
 
@@ -178,7 +255,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
             </div>
           ) : (
             <div className="flex flex-col items-center">
-              <Title level={4} className="m-0 text-blue-600 mb-2">
+              <Title level={5} className="m-0 text-blue-600 mb-2 text-xs">
                 UR
               </Title>
               <Button
@@ -193,27 +270,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         </div>
         <Menu
           mode="inline"
-          defaultSelectedKeys={['dashboard']}
+          selectedKeys={[getCurrentSelectedKey()]}
           items={getMenuItems(user?.role || 'student')}
           className="border-r-0"
           onSelect={({ key }) => {
-            // Emit custom event for dashboard navigation
-            if (user?.role === 'super_admin') {
-              const event = new CustomEvent('sidebar-navigation', {
-                detail: { key }
-              });
-              window.dispatchEvent(event);
-            } else if (user?.role === 'admin') {
-              const event = new CustomEvent('admin-navigation', {
-                detail: { key }
-              });
-              window.dispatchEvent(event);
-            } else if (user?.role === 'student') {
-              const event = new CustomEvent('student-navigation', {
-                detail: { key }
-              });
-              window.dispatchEvent(event);
-            }
+            handleMenuSelect(key);
           }}
         />
       </Sider>
@@ -227,9 +288,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
             </Title>
           </div>
           <div className="flex items-center gap-4">
-            <Badge count={3} size="small">
-              <Button type="text" icon={<MessageOutlined />} />
-            </Badge>
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
               <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-3 py-2 rounded">
                 <Avatar icon={<UserOutlined />} />

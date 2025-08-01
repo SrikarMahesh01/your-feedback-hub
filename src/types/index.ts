@@ -23,7 +23,6 @@ export interface Grievance {
   studentBranch?: string; // Student's branch for reference
   studentYear?: string; // Student's year for reference
   status: 'pending' | 'in_progress' | 'resolved' | 'closed';
-  priority: 'low' | 'medium' | 'high';
   submittedAt: string;
   updatedAt: string;
   adminComments?: string[];
@@ -38,10 +37,17 @@ export interface FeedbackForm {
   targetBranch?: string;
   department: string;
   createdBy: string;
-  isAnonymous: boolean;
   isActive: boolean;
   createdAt: string;
   expiresAt?: string;
+}
+
+export interface FeedbackFormWithCreator extends FeedbackForm {
+  creatorInfo?: {
+    name: string;
+    department: string | string[];
+    hodTitle: string;
+  };
 }
 
 export interface FormQuestion {
@@ -61,9 +67,38 @@ export interface FeedbackResponse {
   studentId?: string;
   responses: { [questionId: string]: string | string[] | number };
   submittedAt: string;
-  isAnonymous: boolean;
 }
 
-export const DEPARTMENTS = ['CSE', 'AI ML', 'AI DS', 'ECE', 'EEE', 'IT', 'MECH'] as const;
+export const DEPARTMENTS = ['CSE', 'ECE', 'EEE', 'IT', 'MECH'] as const;
 export const YEARS = ['1', '2', '3', '4'] as const;
 export const BRANCHES = DEPARTMENTS;
+
+// Mapping of departments to their HOD departments for display purposes
+export const DEPARTMENT_HOD_MAPPING = {
+  'CSE': 'CSE Department',
+  'ECE': 'ECE Department', 
+  'EEE': 'EEE Department',
+  'IT': 'IT Department',
+  'MECH': 'MECH Department'
+} as const;
+
+// Mapping of departments to their HOD titles
+export const DEPARTMENT_HOD_TITLE_MAPPING = {
+  'CSE': 'CSE HOD',
+  'ECE': 'ECE HOD',
+  'EEE': 'EEE HOD',
+  'IT': 'IT HOD',
+  'MECH': 'MECH HOD'
+} as const;
+
+// Function to get HOD department display name
+export const getHODDepartmentName = (department: string): string => {
+  return DEPARTMENT_HOD_MAPPING[department as keyof typeof DEPARTMENT_HOD_MAPPING] || `${department} Department`;
+};
+
+// Function to get HOD title based on department
+export const getHODTitle = (department: string | string[]): string => {
+  // Handle array of departments (take first one)
+  const dept = Array.isArray(department) ? department[0] : department;
+  return DEPARTMENT_HOD_TITLE_MAPPING[dept as keyof typeof DEPARTMENT_HOD_TITLE_MAPPING] || `${dept} HOD`;
+};

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Spin } from 'antd';
 
@@ -10,6 +10,7 @@ interface PrivateRouteProps {
 
 export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, roles }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -20,7 +21,9 @@ export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, roles }) =
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    // Store the attempted URL to redirect after login
+    const from = location.pathname + location.search;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(from)}`} replace />;
   }
 
   if (roles && !roles.includes(user.role)) {

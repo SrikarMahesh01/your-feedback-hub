@@ -446,15 +446,6 @@ export const SuperAdminDashboard: React.FC = () => {
       ),
     },
     {
-      title: 'Priority',
-      dataIndex: 'priority',
-      key: 'priority',
-      render: (priority: string) => {
-        const colors = { low: 'green', medium: 'orange', high: 'red' };
-        return <Tag color={colors[priority as keyof typeof colors]}>{priority}</Tag>;
-      },
-    },
-    {
       title: 'Submitted',
       dataIndex: 'submittedAt',
       key: 'submittedAt',

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Card, 
   Form, 
@@ -30,29 +31,14 @@ const { Title, Text } = Typography;
 
 export const Profile: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [form] = Form.useForm();
   const [passwordForm] = Form.useForm();
 
   const handleBackToDashboard = () => {
-    // Emit navigation event based on user role to go back to dashboard
-    if (user?.role === 'super_admin') {
-      const event = new CustomEvent('sidebar-navigation', {
-        detail: { key: 'dashboard' }
-      });
-      window.dispatchEvent(event);
-    } else if (user?.role === 'admin') {
-      const event = new CustomEvent('admin-navigation', {
-        detail: { key: 'dashboard' }
-      });
-      window.dispatchEvent(event);
-    } else if (user?.role === 'student') {
-      const event = new CustomEvent('student-navigation', {
-        detail: { key: 'dashboard' }
-      });
-      window.dispatchEvent(event);
-    }
+    navigate('/dashboard');
   };
 
   // Add keyboard shortcut for back navigation
@@ -159,7 +145,7 @@ export const Profile: React.FC = () => {
               size="large"
               className="flex items-center gap-2 hover:bg-blue-50 border-blue-200"
             >
-              Back to Dashboard
+              {formatText.title('Back to Dashboard')}
             </Button>
           </Tooltip>
           <Title level={2} className="mb-0">

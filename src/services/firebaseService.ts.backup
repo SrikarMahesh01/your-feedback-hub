@@ -28,8 +28,6 @@ const USERS_COLLECTION = 'users';
 const GRIEVANCES_COLLECTION = 'grievances';
 const FEEDBACK_FORMS_COLLECTION = 'feedback_forms';
 const FEEDBACK_RESPONSES_COLLECTION = 'feedback_responses';
-const ANONYMOUS_FORMS_COLLECTION = 'anonymous_forms';
-const ANONYMOUS_RESPONSES_COLLECTION = 'anonymous_responses';
 
 // User operations
 export const createUser = async (userData: Omit<User, 'createdAt'>) => {
@@ -293,6 +291,8 @@ export const getGrievanceById = async (grievanceId: string): Promise<Grievance |
 
 // Feedback Form operations
 export const createFeedbackForm = async (formData: Omit<FeedbackForm, 'id' | 'createdAt'>) => {
+  console.log('createFeedbackForm called with:', formData);
+  
   // Clean the data to remove any undefined values
   const cleanData = JSON.parse(JSON.stringify(formData));
   
@@ -302,8 +302,10 @@ export const createFeedbackForm = async (formData: Omit<FeedbackForm, 'id' | 'cr
       createdAt: serverTimestamp(),
     });
     
+    console.log('Feedback form created with ID:', docRef.id);
     return docRef.id;
   } catch (error) {
+    console.error('Error creating feedback form:', error);
     throw error;
   }
 };
@@ -334,7 +336,7 @@ export const getFeedbackFormsByDepartment = async (department: string): Promise<
 
 export const getAllFeedbackForms = async (): Promise<FeedbackForm[]> => {
   try {
-    // Get regular forms only
+    // Get regular forms
     const regularQuery = query(collection(db, FEEDBACK_FORMS_COLLECTION));
     const regularSnapshot = await getDocs(regularQuery);
     const regularForms = regularSnapshot.docs.map(doc => {
@@ -342,13 +344,30 @@ export const getAllFeedbackForms = async (): Promise<FeedbackForm[]> => {
       return {
         id: doc.id,
         ...data,
+        isAnonymous: false,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+
+    });
+
+    // Get anonymous forms
+    const anonymousQuery = query(collection(db, ANONYMOUS_FORMS_COLLECTION));
+    const anonymousSnapshot = await getDocs(anonymousQuery);
+    const anonymousForms = anonymousSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        isAnonymous: true,
         createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
         expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
       } as FeedbackForm;
     });
 
-    // Sort all forms by creation date
-    return regularForms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Combine and sort all forms
+    const allForms = [...regularForms, ...anonymousForms];
+    return allForms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (error) {
     console.error('Error getting all feedback forms:', error);
     throw error;
@@ -356,6 +375,9 @@ export const getAllFeedbackForms = async (): Promise<FeedbackForm[]> => {
 };
 
 export const getAvailableFeedbackForms = async (studentYear?: string, studentBranch?: string, studentDepartment?: string, studentId?: string): Promise<FeedbackForm[]> => {
+  console.log('=== FORM FILTERING DEBUG ===');
+  console.log('Student details:', { studentYear, studentBranch, studentDepartment, studentId });
+  
   try {
     // Remove orderBy to avoid index requirements
     let q = query(
@@ -364,6 +386,7 @@ export const getAvailableFeedbackForms = async (studentYear?: string, studentBra
     );
     
     const querySnapshot = await getDocs(q);
+    console.log('Raw forms retrieved from Firebase:', querySnapshot.docs.length);
     
     const forms = querySnapshot.docs.map(doc => {
       const data = doc.data();
@@ -424,14 +447,12 @@ export const getAvailableFeedbackForms = async (studentYear?: string, studentBra
       const studentYearNum = normalizeYear(studentYear || '');
       
       const yearMatch = !form.targetYear || 
-        form.targetYear === 'ALL' || 
-        form.targetYear === 'all' || // Handle legacy lowercase values
+        form.targetYear === 'all' || 
         formYear === studentYearNum ||
         form.targetYear === studentYear;
         
       const branchMatch = !form.targetBranch || 
-        form.targetBranch === 'ALL' || 
-        form.targetBranch === 'all' || // Handle legacy lowercase values 
+        form.targetBranch === 'all' || 
         form.targetBranch?.toLowerCase() === studentBranch?.toLowerCase();
         
       const notExpired = !form.expiresAt || new Date(form.expiresAt) > new Date();
@@ -498,6 +519,107 @@ export const getAvailableFeedbackFormsWithCreator = async (studentYear?: string,
   }
 };
 
+export const getAnonymousFeedbackForms = async (): Promise<FeedbackForm[]> => {
+  try {
+    console.log('Querying anonymous forms collection:', ANONYMOUS_FORMS_COLLECTION);
+    const q = query(
+      collection(db, ANONYMOUS_FORMS_COLLECTION), 
+      where('isActive', '==', true),
+      orderBy('createdAt', 'desc')
+    );
+    const querySnapshot = await getDocs(q);
+    console.log('Anonymous forms query returned:', querySnapshot.docs.length, 'documents');
+    
+    const forms = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      console.log('Anonymous form document:', doc.id, data);
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+    });
+    
+    console.log('Processed anonymous forms:', forms);
+    return forms;
+  } catch (error) {
+    console.error('Error getting anonymous feedback forms:', error);
+    throw error;
+  }
+};
+
+// Function to migrate anonymous forms from regular collection to anonymous collection
+export const migrateAnonymousForms = async () => {
+  try {
+    console.log('Checking for anonymous forms in regular collection...');
+    
+    // Query regular collection for anonymous forms
+    const q = query(
+      collection(db, FEEDBACK_FORMS_COLLECTION),
+      where('isAnonymous', '==', true)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    console.log('Found', querySnapshot.docs.length, 'anonymous forms in regular collection');
+    
+    const migrations = [];
+    for (const docSnapshot of querySnapshot.docs) {
+      const data = docSnapshot.data();
+      console.log('Migrating form:', docSnapshot.id, data.title);
+      
+      // Add to anonymous collection
+      const addPromise = addDoc(collection(db, ANONYMOUS_FORMS_COLLECTION), data);
+      
+      // Delete from regular collection
+      const deletePromise = deleteDoc(doc(db, FEEDBACK_FORMS_COLLECTION, docSnapshot.id));
+      
+      migrations.push(Promise.all([addPromise, deletePromise]));
+    }
+    
+    await Promise.all(migrations);
+    console.log('Migration completed successfully');
+    
+    return querySnapshot.docs.length;
+  } catch (error) {
+    console.error('Error migrating anonymous forms:', error);
+    throw error;
+  }
+};
+
+// Enhanced function for anonymous forms with creator information
+export const getAnonymousFeedbackFormsWithCreator = async (): Promise<FeedbackFormWithCreator[]> => {
+  try {
+    const forms = await getAnonymousFeedbackForms();
+    
+    // Enrich each form with creator information
+    const formsWithCreator = await Promise.all(
+      forms.map(async (form) => {
+        try {
+          const creator = await getUserById(form.createdBy);
+          const enrichedForm: FeedbackFormWithCreator = {
+            ...form,
+            creatorInfo: creator ? {
+              name: creator.name,
+              department: creator.department || 'Unknown',
+              hodTitle: getHODTitle(creator.department || 'Unknown')
+            } : undefined
+          };
+          return enrichedForm;
+        } catch (error) {
+          console.error(`Error getting creator info for anonymous form ${form.id}:`, error);
+          return { ...form } as FeedbackFormWithCreator;
+        }
+      })
+    );
+    
+    return formsWithCreator;
+  } catch (error) {
+    console.error('Error getting anonymous feedback forms with creator info:', error);
+    throw error;
+  }
+};
+
 // Feedback Response operations
 export const submitFeedbackResponse = async (responseData: Omit<FeedbackResponse, 'id' | 'submittedAt'>) => {
   try {
@@ -508,6 +630,19 @@ export const submitFeedbackResponse = async (responseData: Omit<FeedbackResponse
     return docRef.id;
   } catch (error) {
     console.error('Error submitting feedback response:', error);
+    throw error;
+  }
+};
+
+export const submitAnonymousResponse = async (responseData: Omit<FeedbackResponse, 'id' | 'submittedAt' | 'studentId'>) => {
+  try {
+    const docRef = await addDoc(collection(db, ANONYMOUS_RESPONSES_COLLECTION), {
+      ...responseData,
+      submittedAt: serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error('Error submitting anonymous response:', error);
     throw error;
   }
 };
@@ -615,12 +750,21 @@ export const subscribeToFeedbackResponses = (callback: (responses: any[]) => voi
       orderBy('submittedAt', 'desc')
     );
     
+    // Listen to anonymous responses
+    const anonymousResponsesQuery = query(
+      collection(db, ANONYMOUS_RESPONSES_COLLECTION),
+      where('formId', 'in', formIds),
+      orderBy('submittedAt', 'desc')
+    );
+    
     let regularResponses: any[] = [];
+    let anonymousResponses: any[] = [];
     
     const combineAndCallback = () => {
+      const allResponses = [...regularResponses, ...anonymousResponses];
       // Sort by submittedAt
-      regularResponses.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-      callback(regularResponses);
+      allResponses.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+      callback(allResponses);
     };
     
     // Subscribe to regular responses
@@ -630,14 +774,32 @@ export const subscribeToFeedbackResponses = (callback: (responses: any[]) => voi
         return {
           id: doc.id,
           ...data,
+          isAnonymous: false,
           submittedAt: data.submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
         };
       });
       combineAndCallback();
     });
     
-    // Return unsubscribe function
-    return unsubscribeRegular;
+    // Subscribe to anonymous responses
+    const unsubscribeAnonymous = onSnapshot(anonymousResponsesQuery, (querySnapshot) => {
+      anonymousResponses = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          isAnonymous: true,
+          submittedAt: data.submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        };
+      });
+      combineAndCallback();
+    });
+    
+    // Return combined unsubscribe function
+    return () => {
+      unsubscribeRegular();
+      unsubscribeAnonymous();
+    };
   });
 };
 
@@ -740,25 +902,7 @@ export const toggleFeedbackFormStatus = async (formId: string, isActive: boolean
 
 export const deleteFeedbackForm = async (formId: string) => {
   try {
-    // First, delete all responses associated with this form
-    const responsesQuery = query(
-      collection(db, FEEDBACK_RESPONSES_COLLECTION),
-      where('formId', '==', formId)
-    );
-    const responsesSnapshot = await getDocs(responsesQuery);
-    
-    // Delete all responses in batch
-    const deletePromises = responsesSnapshot.docs.map(doc => 
-      deleteDoc(doc.ref)
-    );
-    await Promise.all(deletePromises);
-    
-    console.log(`Deleted ${responsesSnapshot.docs.length} responses for form ${formId}`);
-    
-    // Then delete the form itself
     await deleteDoc(doc(db, FEEDBACK_FORMS_COLLECTION, formId));
-    
-    console.log(`Successfully deleted form ${formId} and all associated responses`);
   } catch (error) {
     console.error('Error deleting feedback form:', error);
     throw error;
@@ -770,46 +914,6 @@ export const deleteGrievance = async (grievanceId: string) => {
     await deleteDoc(doc(db, GRIEVANCES_COLLECTION, grievanceId));
   } catch (error) {
     console.error('Error deleting grievance:', error);
-    throw error;
-  }
-};
-
-// Function to clean up orphaned responses (responses whose forms no longer exist)
-export const cleanupOrphanedResponses = async () => {
-  try {
-    console.log('Starting cleanup of orphaned responses...');
-    
-    // Get all responses
-    const responsesQuery = query(collection(db, FEEDBACK_RESPONSES_COLLECTION));
-    const responsesSnapshot = await getDocs(responsesQuery);
-    
-    let deletedCount = 0;
-    
-    // Check each response to see if its form still exists
-    for (const responseDoc of responsesSnapshot.docs) {
-      const responseData = responseDoc.data();
-      
-      if (responseData.formId) {
-        try {
-          const formDocRef = doc(db, FEEDBACK_FORMS_COLLECTION, responseData.formId);
-          const formDoc = await getDoc(formDocRef);
-          
-          // If form doesn't exist, delete the orphaned response
-          if (!formDoc.exists()) {
-            await deleteDoc(responseDoc.ref);
-            deletedCount++;
-            console.log(`Deleted orphaned response ${responseDoc.id} for non-existent form ${responseData.formId}`);
-          }
-        } catch (error) {
-          console.warn(`Error checking form existence for response ${responseDoc.id}:`, error);
-        }
-      }
-    }
-    
-    console.log(`Cleanup completed. Deleted ${deletedCount} orphaned responses.`);
-    return deletedCount;
-  } catch (error) {
-    console.error('Error cleaning up orphaned responses:', error);
     throw error;
   }
 };
@@ -996,6 +1100,65 @@ export const getFeedbackResponsesByDepartment = async (department: string | stri
   }
 };
 
+export const getAnonymousResponsesByDepartment = async (department: string | string[]): Promise<FeedbackResponse[]> => {
+  try {
+    const departments = Array.isArray(department) ? department : [department];
+    
+    // Get all anonymous forms for the departments
+    const allForms = await getAllAnonymousForms();
+    const departmentForms = allForms.filter((form: FeedbackForm) => 
+      departments.includes(form.department)
+    );
+    const formIds = departmentForms.map(form => form.id);
+    
+    if (formIds.length === 0) {
+      return [];
+    }
+    
+    // Get anonymous responses for these forms
+    const q = query(
+      collection(db, ANONYMOUS_RESPONSES_COLLECTION),
+      where('formId', 'in', formIds)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const responses = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        submittedAt: data.submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+      } as FeedbackResponse;
+    });
+    
+    return responses.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  } catch (error) {
+    console.error('Error getting anonymous responses by department:', error);
+    throw error;
+  }
+};
+
+export const getAllAnonymousForms = async (): Promise<FeedbackForm[]> => {
+  try {
+    const q = query(collection(db, ANONYMOUS_FORMS_COLLECTION));
+    const querySnapshot = await getDocs(q);
+    const forms = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+    });
+    
+    return forms.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (error) {
+    console.error('Error getting all anonymous forms:', error);
+    throw error;
+  }
+};
+
 export const getDetailedStudentGrievances = async (adminDepartments: string | string[]): Promise<any[]> => {
   try {
     const departments = Array.isArray(adminDepartments) ? adminDepartments : [adminDepartments];
@@ -1036,19 +1199,24 @@ export const getDetailedFeedbackResponses = async (adminDepartments: string | st
     const allForms = await getAllFeedbackForms();
     const departmentForms = allForms.filter((form: FeedbackForm) => departments.includes(form.department));
     
-    // Get all responses for these forms
+    // Get all responses for these forms (both regular and anonymous)
     const regularResponses = await getFeedbackResponsesByDepartment(departments);
+    const anonymousResponses = await getAnonymousResponsesByDepartment(departments);
+    
+    // Combine both types of responses
+    const allResponses = [...regularResponses, ...anonymousResponses];
     
     // Get all students from admin's departments
     const students = await getStudentsByDepartment(departments);
     
     // Combine response info with student and form details
-    const detailedResponses = regularResponses.map(response => {
+    const detailedResponses = allResponses.map(response => {
       const form = departmentForms.find((f: FeedbackForm) => f.id === response.formId);
       const student = response.studentId ? students.find(s => s.id === response.studentId) : null;
       
       return {
         ...response,
+        isAnonymous: !response.studentId || response.isAnonymous,
         formDetails: form ? {
           title: form.title,
           description: form.description,
@@ -1103,16 +1271,14 @@ export const getFeedbackResponsesByStudent = async (studentId: string): Promise<
           id: responseDoc.id,
           ...responseData,
           submittedAt: responseData.submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+          isAnonymous: false,
           formDetails,
         };
       })
     );
 
-    // Filter out responses where the form no longer exists (orphaned responses)
-    const validResponses = responses.filter(response => response.formDetails !== null);
-
     // Sort by submittedAt in JavaScript
-    return validResponses.sort((a, b) => 
+    return responses.sort((a, b) => 
       new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
     );
   } catch (error) {
@@ -1149,6 +1315,7 @@ export const exportResponsesToCSV = (responses: any[], formTitle: string): void 
     'Year',
     'Branch',
     'Submitted At',
+    'Anonymous',
     ...questionsList
   ];
 
@@ -1156,12 +1323,13 @@ export const exportResponsesToCSV = (responses: any[], formTitle: string): void 
   const rows = responses.map(response => {
     const row: any = {
       'Response ID': response.id,
-      'Student Name': response.studentDetails?.name || 'N/A',
-      'Email': response.studentDetails?.email || 'N/A',
-      'Roll Number': response.studentDetails?.rollNumber || 'N/A',
-      'Year': response.studentDetails?.year || 'N/A',
-      'Branch': response.studentDetails?.branch || 'N/A',
-      'Submitted At': new Date(response.submittedAt).toLocaleString()
+      'Student Name': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.name || 'N/A'),
+      'Email': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.email || 'N/A'),
+      'Roll Number': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.rollNumber || 'N/A'),
+      'Year': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.year || 'N/A'),
+      'Branch': response.isAnonymous ? 'Anonymous' : (response.studentDetails?.branch || 'N/A'),
+      'Submitted At': new Date(response.submittedAt).toLocaleString(),
+      'Anonymous': response.isAnonymous ? 'Yes' : 'No'
     };
 
     // Add responses to questions
@@ -1211,18 +1379,35 @@ export const getFeedbackFormsByCreator = async (creatorId: string): Promise<Feed
     );
     const regularSnapshot = await getDocs(regularQuery);
     
-    // Get forms created by this user
-    const allForms = regularSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-      expiresAt: doc.data().expiresAt?.toDate?.()?.toISOString(),
-    })) as FeedbackForm[];
+    // Get anonymous forms created by this user
+    const anonymousQuery = query(
+      collection(db, ANONYMOUS_FORMS_COLLECTION),
+      where('createdBy', '==', creatorId)
+    );
+    const anonymousSnapshot = await getDocs(anonymousQuery);
+    
+    // Combine both types of forms
+    const allForms = [
+      ...regularSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        isAnonymous: false,
+        createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: doc.data().expiresAt?.toDate?.()?.toISOString(),
+      })),
+      ...anonymousSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        isAnonymous: true,
+        createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: doc.data().expiresAt?.toDate?.()?.toISOString(),
+      }))
+    ];
     
     // Sort by createdAt in JavaScript
     return allForms.sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    ) as FeedbackForm[];
   } catch (error) {
     console.error('Error getting feedback forms by creator:', error);
     throw error;
@@ -1250,22 +1435,42 @@ export const getFeedbackResponsesByCreator = async (creatorId: string): Promise<
         id: doc.id,
         ...doc.data(),
         submittedAt: doc.data().submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        isAnonymous: false,
+      }));
+    });
+    
+    // Get anonymous responses for user's forms
+    const anonymousResponsesPromises = formIds.map(async (formId) => {
+      const q = query(
+        collection(db, ANONYMOUS_RESPONSES_COLLECTION),
+        where('formId', '==', formId)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        submittedAt: doc.data().submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        isAnonymous: true,
       }));
     });
     
     const regularResponses = await Promise.all(regularResponsesPromises);
+    const anonymousResponses = await Promise.all(anonymousResponsesPromises);
     
-    // Flatten all responses
-    const allResponses = regularResponses.flat();
+    // Flatten and combine all responses
+    const allResponses = [
+      ...regularResponses.flat(),
+      ...anonymousResponses.flat()
+    ];
 
     // Enrich responses with student and form details
     const enrichedResponses = await Promise.all(allResponses.map(async (response: any) => {
       // Get form details
       const form = userForms.find(f => f.id === response.formId);
       
-      // Get student details
+      // Get student details if not anonymous
       let studentDetails = null;
-      if (response.studentId) {
+      if (!response.isAnonymous && response.studentId) {
         try {
           const student = await getUserById(response.studentId);
           if (student) {
@@ -1307,7 +1512,7 @@ export const getFeedbackResponsesByCreator = async (creatorId: string): Promise<
 
 export const getFeedbackFormById = async (formId: string): Promise<FeedbackForm | null> => {
   try {
-    // Get form from regular forms collection
+    // First try regular forms
     const regularDocRef = doc(db, FEEDBACK_FORMS_COLLECTION, formId);
     const regularDocSnap = await getDoc(regularDocRef);
     
@@ -1316,6 +1521,7 @@ export const getFeedbackFormById = async (formId: string): Promise<FeedbackForm 
       const formData = {
         id: regularDocSnap.id,
         ...data,
+        isAnonymous: false,
         createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
         expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
       } as FeedbackForm;
@@ -1323,6 +1529,29 @@ export const getFeedbackFormById = async (formId: string): Promise<FeedbackForm 
       // Check if form is active
       if (!formData.isActive) {
         console.log(`Form ${formId} is inactive, not returning it`);
+        return null;
+      }
+      
+      return formData;
+    }
+    
+    // Then try anonymous forms
+    const anonymousDocRef = doc(db, ANONYMOUS_FORMS_COLLECTION, formId);
+    const anonymousDocSnap = await getDoc(anonymousDocRef);
+    
+    if (anonymousDocSnap.exists()) {
+      const data = anonymousDocSnap.data();
+      const formData = {
+        id: anonymousDocSnap.id,
+        ...data,
+        isAnonymous: true,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
+      } as FeedbackForm;
+      
+      // Check if form is active
+      if (!formData.isActive) {
+        console.log(`Anonymous form ${formId} is inactive, not returning it`);
         return null;
       }
       
@@ -1346,7 +1575,19 @@ export const checkIfStudentSubmittedForm = async (studentId: string, formId: str
     );
     const regularSnapshot = await getDocs(regularQuery);
     
-    return regularSnapshot.size > 0;
+    if (regularSnapshot.size > 0) {
+      return true;
+    }
+
+    // Check anonymous responses (if they contain student info)
+    const anonymousQuery = query(
+      collection(db, ANONYMOUS_RESPONSES_COLLECTION),
+      where('studentId', '==', studentId),
+      where('formId', '==', formId)
+    );
+    const anonymousSnapshot = await getDocs(anonymousQuery);
+    
+    return anonymousSnapshot.size > 0;
   } catch (error) {
     console.error('Error checking if student submitted form:', error);
     return false;
@@ -1412,255 +1653,4 @@ export const exportStudentsToCSV = (students: User[], departmentName: string): v
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-};
-
-// Export anonymous forms responses to CSV
-export const exportAnonymousResponsesToCSV = async (formId: string, formTitle: string): Promise<void> => {
-  try {
-    const responses = await getAnonymousResponsesByForm(formId);
-    const form = await getAnonymousFormById(formId);
-    
-    if (!responses || responses.length === 0) {
-      console.warn('No anonymous responses to export');
-      return;
-    }
-
-    if (!form) {
-      console.warn('Form not found');
-      return;
-    }
-
-    // Create CSV headers
-    const headers = [
-      'Response ID',
-      'Student Year',
-      'Submission Date',
-      'Submission Time',
-      ...form.questions.map(q => q.question)
-    ];
-
-    // Create CSV rows
-    const rows = responses.map((response, index) => {
-      const submissionDate = new Date(response.submittedAt);
-      const row = [
-        `ANO-${index + 1}`,
-        response.studentYear || 'N/A',
-        submissionDate.toLocaleDateString(),
-        submissionDate.toLocaleTimeString(),
-      ];
-
-      // Add responses for each question
-      form.questions.forEach(question => {
-        const answer = response.responses[question.id];
-        if (Array.isArray(answer)) {
-          row.push(answer.join('; '));
-        } else {
-          row.push(String(answer || ''));
-        }
-      });
-
-      return row;
-    });
-
-    // Convert to CSV format
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => {
-        const value = String(cell || '');
-        // Escape quotes and wrap in quotes if contains comma
-        const escapedValue = value.replace(/"/g, '""');
-        return escapedValue.includes(',') ? `"${escapedValue}"` : escapedValue;
-      }).join(','))
-    ].join('\n');
-
-    // Download CSV file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Anonymous_${formTitle.replace(/[^a-zA-Z0-9]/g, '_')}_Responses_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error('Error exporting anonymous responses to CSV:', error);
-    throw error;
-  }
-};
-
-// Anonymous Forms Functions
-export const createAnonymousForm = async (formData: Omit<FeedbackForm, 'id' | 'createdAt'>) => {
-  try {
-    const docRef = await addDoc(collection(db, ANONYMOUS_FORMS_COLLECTION), {
-      ...formData,
-      createdAt: serverTimestamp(),
-    });
-    return docRef.id;
-  } catch (error) {
-    console.error('Error creating anonymous form:', error);
-    throw error;
-  }
-};
-
-export const getAnonymousForms = async (): Promise<FeedbackForm[]> => {
-  try {
-    // Get all forms and filter/sort in JavaScript to avoid requiring composite index
-    const q = query(collection(db, ANONYMOUS_FORMS_COLLECTION));
-    const querySnapshot = await getDocs(q);
-    
-    const forms = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-      expiresAt: doc.data().expiresAt?.toDate?.()?.toISOString(),
-    } as FeedbackForm));
-
-    // Filter and sort in JavaScript
-    return forms
-      .filter(form => form.isActive)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch (error) {
-    console.error('Error getting anonymous forms:', error);
-    throw error;
-  }
-};
-
-export const getAnonymousFormById = async (formId: string): Promise<FeedbackForm | null> => {
-  try {
-    const docRef = doc(db, ANONYMOUS_FORMS_COLLECTION, formId);
-    const docSnap = await getDoc(docRef);
-    
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      return {
-        id: docSnap.id,
-        ...data,
-        createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-        expiresAt: data.expiresAt?.toDate?.()?.toISOString(),
-      } as FeedbackForm;
-    }
-    return null;
-  } catch (error) {
-    console.error('Error getting anonymous form by ID:', error);
-    throw error;
-  }
-};
-
-export const submitAnonymousResponse = async (responseData: {
-  formId: string;
-  studentYear: string;
-  responses: { [questionId: string]: string | string[] | number };
-}) => {
-  try {
-    const docRef = await addDoc(collection(db, ANONYMOUS_RESPONSES_COLLECTION), {
-      ...responseData,
-      submittedAt: serverTimestamp(),
-    });
-    return docRef.id;
-  } catch (error) {
-    console.error('Error submitting anonymous response:', error);
-    throw error;
-  }
-};
-
-export const getAnonymousResponsesByForm = async (formId: string): Promise<any[]> => {
-  try {
-    // Get all responses for this form and sort in JavaScript to avoid composite index
-    const q = query(
-      collection(db, ANONYMOUS_RESPONSES_COLLECTION),
-      where('formId', '==', formId)
-    );
-    const querySnapshot = await getDocs(q);
-    
-    const responses = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      submittedAt: doc.data().submittedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-    }));
-
-    // Sort in JavaScript
-    return responses.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-  } catch (error) {
-    console.error('Error getting anonymous responses:', error);
-    throw error;
-  }
-};
-
-export const getAnonymousResponsesByCreator = async (creatorId: string): Promise<any[]> => {
-  try {
-    // First get all anonymous forms created by this admin
-    const formsQuery = query(
-      collection(db, ANONYMOUS_FORMS_COLLECTION),
-      where('createdBy', '==', creatorId)
-    );
-    const formsSnapshot = await getDocs(formsQuery);
-    const formIds = formsSnapshot.docs.map(doc => doc.id);
-    
-    if (formIds.length === 0) {
-      return [];
-    }
-    
-    // Get all responses for these forms
-    const responses: any[] = [];
-    for (const formId of formIds) {
-      const formResponses = await getAnonymousResponsesByForm(formId);
-      // Add form details to each response
-      const formData = formsSnapshot.docs.find(doc => doc.id === formId)?.data();
-      const responsesWithFormDetails = formResponses.map(response => ({
-        ...response,
-        formDetails: {
-          id: formId,
-          title: formData?.title || 'Unknown Form',
-          questions: formData?.questions || [],
-        }
-      }));
-      responses.push(...responsesWithFormDetails);
-    }
-    
-    return responses.sort((a, b) => 
-      new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-    );
-  } catch (error) {
-    console.error('Error getting anonymous responses by creator:', error);
-    throw error;
-  }
-};
-
-export const deleteAnonymousForm = async (formId: string) => {
-  try {
-    // First, delete all responses associated with this form
-    const responsesQuery = query(
-      collection(db, ANONYMOUS_RESPONSES_COLLECTION),
-      where('formId', '==', formId)
-    );
-    const responsesSnapshot = await getDocs(responsesQuery);
-    
-    // Delete all responses in batch
-    const deletePromises = responsesSnapshot.docs.map(doc => 
-      deleteDoc(doc.ref)
-    );
-    await Promise.all(deletePromises);
-    
-    console.log(`Deleted ${responsesSnapshot.docs.length} anonymous responses for form ${formId}`);
-    
-    // Then delete the form itself
-    await deleteDoc(doc(db, ANONYMOUS_FORMS_COLLECTION, formId));
-    
-    console.log(`Successfully deleted anonymous form ${formId} and all associated responses`);
-  } catch (error) {
-    console.error('Error deleting anonymous form:', error);
-    throw error;
-  }
-};
-
-export const updateAnonymousFormStatus = async (formId: string, isActive: boolean) => {
-  try {
-    const docRef = doc(db, ANONYMOUS_FORMS_COLLECTION, formId);
-    await updateDoc(docRef, { isActive });
-  } catch (error) {
-    console.error('Error updating anonymous form status:', error);
-    throw error;
-  }
 };

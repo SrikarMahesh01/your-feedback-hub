@@ -9,11 +9,12 @@ import {
 import { auth } from '../config/firebase';
 import { createUser, getUserById, getUserByEmail } from '../services/firebaseService';
 import { User } from '../types';
+import { SessionManager } from '../utils/sessionManager';
 
 interface AuthContextType {
   user: User | null;
   firebaseUser: FirebaseUser | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   register: (userData: Omit<User, 'id' | 'createdAt'>, password: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
@@ -43,30 +44,66 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setLoading(true);
       try {
         if (firebaseUser) {
+          // Check if this is a new browser session (browser was closed and reopened)
+          if (SessionManager.isNewBrowserSession()) {
+            // Browser was closed and reopened, log out the user
+            await signOut(auth);
+            SessionManager.clearSession();
+            setFirebaseUser(null);
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+
+          // Check if session is still valid
+          if (!SessionManager.isSessionValid()) {
+            // Session expired or invalid, log out
+            await signOut(auth);
+            SessionManager.clearSession();
+            setFirebaseUser(null);
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+
+          // Valid session, proceed with user authentication
           setFirebaseUser(firebaseUser);
           // Get user data from Firestore
           const userData = await getUserById(firebaseUser.uid);
           if (userData) {
             setUser(userData);
+            // Initialize or continue session
+            if (!SessionManager.getSessionId()) {
+              SessionManager.initializeSession();
+            } else {
+              SessionManager.startHeartbeat();
+            }
           } else {
             // If user data doesn't exist in Firestore, try to find by email
             const userByEmail = await getUserByEmail(firebaseUser.email || '');
             if (userByEmail) {
               setUser(userByEmail);
+              // Initialize or continue session
+              if (!SessionManager.getSessionId()) {
+                SessionManager.initializeSession();
+              } else {
+                SessionManager.startHeartbeat();
+              }
             } else {
               // User exists in Auth but not in Firestore - this shouldn't happen
-              console.error('User exists in Auth but not in Firestore');
               await signOut(auth);
+              SessionManager.clearSession();
             }
           }
         } else {
           setFirebaseUser(null);
           setUser(null);
+          SessionManager.stopHeartbeat();
         }
       } catch (error) {
-        console.error('Error in auth state change:', error);
         setFirebaseUser(null);
         setUser(null);
+        SessionManager.clearSession();
       } finally {
         setLoading(false);
       }
@@ -75,7 +112,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<User> => {
     setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -89,8 +126,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       setFirebaseUser(firebaseUser);
       setUser(userData);
+      
+      // Initialize session management for the logged-in user
+      SessionManager.initializeSession();
+      
+      return userData;
     } catch (error: any) {
-      console.error('Login error:', error);
       throw new Error(error.message || 'Login failed');
     } finally {
       setLoading(false);
@@ -111,7 +152,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const firebaseUser = userCredential.user;
 
       // Create user profile in Firestore with the Firebase UID
-      const userId = await createUser({
+      await createUser({
         ...userData,
         id: firebaseUser.uid, // Use Firebase UID as the document ID
       });
@@ -124,8 +165,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       setFirebaseUser(firebaseUser);
       setUser(newUser);
+      
+      // Initialize session management for the new user
+      SessionManager.initializeSession();
     } catch (error: any) {
-      console.error('Registration error:', error);
       throw new Error(error.message || 'Registration failed');
     } finally {
       setLoading(false);
@@ -137,8 +180,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await signOut(auth);
       setFirebaseUser(null);
       setUser(null);
+      
+      // Clear session management
+      SessionManager.clearSession();
     } catch (error) {
-      console.error('Logout error:', error);
       throw error;
     }
   };

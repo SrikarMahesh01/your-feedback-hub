@@ -140,3 +140,62 @@
   background-clip: text;
   font-weight: 700;
 }
+
+/* Excel-like table styling */
+.excel-like-table .ant-table {
+  border: 1px solid #d9d9d9;
+}
+
+.excel-like-table .ant-table-thead > tr > th {
+  background: #f5f5f5;
+  border: 1px solid #d9d9d9;
+  font-weight: 600;
+  color: #262626;
+  padding: 8px 12px;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.excel-like-table .ant-table-tbody > tr > td {
+  border: 1px solid #e8e8e8;
+  padding: 8px 12px;
+  background: #fff;
+  vertical-align: top;
+}
+
+.excel-like-table .ant-table-tbody > tr:nth-child(even) > td {
+  background: #fafafa;
+}
+
+.excel-like-table .ant-table-tbody > tr:hover > td {
+  background: #e6f7ff !important;
+}
+
+.excel-like-table .ant-table-cell-fix-left,
+.excel-like-table .ant-table-cell-fix-right {
+  background: #f0f0f0 !important;
+  border-right: 2px solid #1890ff;
+}
+
+.excel-like-table .ant-table-tbody > tr:nth-child(even) .ant-table-cell-fix-left,
+.excel-like-table .ant-table-tbody > tr:nth-child(even) .ant-table-cell-fix-right {
+  background: #f5f5f5 !important;
+}
+
+.excel-like-table .ant-table-tbody > tr:hover .ant-table-cell-fix-left,
+.excel-like-table .ant-table-tbody > tr:hover .ant-table-cell-fix-right {
+  background: #e1f5fe !important;
+}
+
+/* Form responses modal styling */
+.form-responses-modal .ant-modal-body {
+  padding: 16px;
+}
+
+.form-responses-modal .ant-table-wrapper {
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}

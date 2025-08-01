@@ -90,15 +90,6 @@ export const GrievanceDetail: React.FC = () => {
     return colors[status as keyof typeof colors] || 'default';
   };
 
-  const getPriorityColor = (priority: string) => {
-    const colors = {
-      high: 'red',
-      medium: 'orange',
-      low: 'green',
-    };
-    return colors[priority as keyof typeof colors] || 'default';
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
@@ -125,9 +116,6 @@ export const GrievanceDetail: React.FC = () => {
                   <Title level={3} className="mb-0">{grievance.title}</Title>
                   <Tag color={getStatusColor(grievance.status)}>
                     {grievance.status.replace('_', ' ').toUpperCase()}
-                  </Tag>
-                  <Tag color={getPriorityColor(grievance.priority)}>
-                    {grievance.priority.toUpperCase()} PRIORITY
                   </Tag>
                 </Space>
               </div>

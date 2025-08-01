@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Table, Tag, Typography, Row, Col, Statistic, Space, Modal, Form, Input, Select } from 'antd';
+import { Card, Button, Table, Tag, Typography, Row, Col, Statistic, Space, Modal, Form, Input, Select, message } from 'antd';
 import { PlusOutlined, FileTextOutlined, FormOutlined, HistoryOutlined } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { Grievance, FeedbackForm } from '../../types';
 import { formatText } from '../../utils/textFormatter';
 import { 
@@ -18,13 +19,19 @@ const { TextArea } = Input;
 
 type ViewType = 'dashboard' | 'grievances' | 'feedback' | 'history' | 'profile';
 
-export const StudentDashboard: React.FC = () => {
+interface StudentDashboardProps {
+  initialView?: ViewType;
+}
+
+export const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialView = 'dashboard' }) => {
   const { user } = useAuth();
-  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const navigate = useNavigate();
+  const [currentView, setCurrentView] = useState<ViewType>(initialView);
   const [grievances, setGrievances] = useState<Grievance[]>([]);
   const [availableForms, setAvailableForms] = useState<FeedbackForm[]>([]);
   const [submittedResponses, setSubmittedResponses] = useState<any[]>([]);
   const [isGrievanceModalVisible, setIsGrievanceModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
 
   // Listen for navigation changes from sidebar and user menu
@@ -74,13 +81,18 @@ export const StudentDashboard: React.FC = () => {
 
   useEffect(() => {
     // Load data based on current view
+    console.log('Current view changed to:', currentView);
+    
     if (currentView === 'dashboard' || currentView === 'grievances' || currentView === 'history') {
+      console.log('Loading grievances due to view change');
       loadGrievances();
     }
     if (currentView === 'dashboard' || currentView === 'feedback') {
+      console.log('Loading forms due to view change');
       loadAvailableForms();
     }
     if (currentView === 'dashboard' || currentView === 'history') {
+      console.log('Loading responses due to view change');
       loadSubmittedResponses();
     }
   }, [user, currentView]);
@@ -89,10 +101,20 @@ export const StudentDashboard: React.FC = () => {
     if (!user?.id) return;
     
     try {
+      setLoading(true);
+      console.log('Loading grievances for student:', user.id);
       const userGrievances = await getGrievancesByStudent(user.id);
+      console.log('Loaded grievances:', userGrievances);
       setGrievances(userGrievances);
+      
+      if (userGrievances.length === 0) {
+        console.log('No grievances found for student:', user.id);
+      }
     } catch (error) {
       console.error('Error loading grievances:', error);
+      message.error('Failed to load grievances');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -172,7 +194,6 @@ export const StudentDashboard: React.FC = () => {
         studentBranch: user?.branch,
         studentYear: user?.year,
         status: 'pending' as const,
-        priority: values.priority,
       };
 
       const grievanceId = await createGrievance(grievanceData);
@@ -246,15 +267,6 @@ export const StudentDashboard: React.FC = () => {
       },
     },
     {
-      title: formatText.title('priority'),
-      dataIndex: 'priority',
-      key: 'priority',
-      render: (priority: string) => {
-        const colors = { low: 'green', medium: 'orange', high: 'red' };
-        return <Tag color={colors[priority as keyof typeof colors]}>{formatText.tag(priority)}</Tag>;
-      },
-    },
-    {
       title: formatText.title('submitted'),
       dataIndex: 'submittedAt',
       key: 'submittedAt',
@@ -279,21 +291,16 @@ export const StudentDashboard: React.FC = () => {
       ),
     },
     {
-      title: formatText.title('department'),
-      dataIndex: 'department',
-      key: 'department',
-    },
-    {
       title: formatText.title('target year'),
       dataIndex: 'targetYear',
       key: 'targetYear',
-      render: (year: string) => year === 'all' ? 'All Years' : `Year ${year}`,
+      render: (year: string) => (year === 'ALL' || year === 'all') ? 'All Years' : `Year ${year}`,
     },
     {
       title: formatText.title('target branch'),
       dataIndex: 'targetBranch',
       key: 'targetBranch',
-      render: (branch: string) => branch === 'all' ? 'All Branches' : branch,
+      render: (branch: string) => (branch === 'ALL' || branch === 'all') ? 'All Branches' : branch,
     },
     {
       title: formatText.title('created'),
@@ -312,7 +319,7 @@ export const StudentDashboard: React.FC = () => {
           <Button
             type="primary"
             size="small"
-            onClick={() => window.open(`/forms/${record.id}`, '_blank')}
+            onClick={() => navigate(`/forms/${record.id}`)}
           >
             Fill Form
           </Button>
@@ -354,13 +361,23 @@ export const StudentDashboard: React.FC = () => {
             View and manage your submitted grievances
           </Paragraph>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setIsGrievanceModalVisible(true)}
-        >
-          Submit New Grievance
-        </Button>
+        <Space>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setIsGrievanceModalVisible(true)}
+          >
+            Submit New Grievance
+          </Button>
+          <Button
+            onClick={() => {
+              console.log('Manual refresh clicked');
+              loadGrievances();
+            }}
+          >
+            Refresh
+          </Button>
+        </Space>
       </div>
 
       <Row gutter={[16, 16]}>
@@ -398,6 +415,7 @@ export const StudentDashboard: React.FC = () => {
           columns={grievanceColumns}
           dataSource={grievances}
           rowKey="id"
+          loading={loading}
           pagination={{ pageSize: 10 }}
         />
       </Card>
@@ -427,13 +445,50 @@ export const StudentDashboard: React.FC = () => {
           <Card>
             <Statistic
               title={formatText.title("completed forms")}
-              value={0}
+              value={submittedResponses.length}
               valueStyle={{ color: '#52c41a' }}
             />
           </Card>
         </Col>
       </Row>
 
+      {/* Previously Submitted Forms */}
+      {submittedResponses.length > 0 && (
+        <Card title={formatText.title("Previously Submitted Forms")}>
+          <Table
+            columns={[
+              {
+                title: formatText.title('Form Title'),
+                key: 'formTitle',
+                render: (record: any) => record.formDetails?.title || 'Unknown Form',
+              },
+              {
+                title: formatText.title('Description'),
+                key: 'description',
+                render: (record: any) => record.formDetails?.description || 'No description',
+                ellipsis: true,
+              },
+              {
+                title: formatText.title('Submitted At'),
+                dataIndex: 'submittedAt',
+                key: 'submittedAt',
+                render: (date: string) => new Date(date).toLocaleDateString(),
+              },
+              {
+                title: formatText.title('Status'),
+                key: 'status',
+                render: () => <Tag color="green">Completed</Tag>,
+              },
+            ]}
+            dataSource={submittedResponses}
+            rowKey="id"
+            pagination={{ pageSize: 5 }}
+            size="small"
+          />
+        </Card>
+      )}
+
+      {/* Available Forms */}
       <Card title={formatText.title("available feedback forms")}>
         {availableForms.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '50px' }}>
@@ -470,22 +525,18 @@ export const StudentDashboard: React.FC = () => {
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title={formatText.title("total submissions")}
+              title={formatText.title("total grievances")}
               value={stats.totalGrievances}
-              prefix={<HistoryOutlined />}
+              prefix={<FileTextOutlined />}
             />
           </Card>
         </Col>
         <Col xs={24} sm={8}>
           <Card>
             <Statistic
-              title={formatText.title("this month")}
-              value={grievances.filter(g => {
-                const grievanceDate = new Date(g.submittedAt);
-                const currentDate = new Date();
-                return grievanceDate.getMonth() === currentDate.getMonth() && 
-                       grievanceDate.getFullYear() === currentDate.getFullYear();
-              }).length}
+              title={formatText.title("completed forms")}
+              value={submittedResponses.length}
+              prefix={<FormOutlined />}
               valueStyle={{ color: '#1890ff' }}
             />
           </Card>
@@ -502,50 +553,103 @@ export const StudentDashboard: React.FC = () => {
         </Col>
       </Row>
 
-      <Card title={formatText.title("submission history")}>
-        <Table
-          columns={[
-            {
-              title: formatText.title('title'),
-              dataIndex: 'title',
-              key: 'title',
-            },
-            {
-              title: formatText.title('type'),
-              key: 'type',
-              render: () => <Tag color="blue">Grievance</Tag>,
-            },
-            {
-              title: formatText.title('category'),
-              dataIndex: 'category',
-              key: 'category',
-              render: (category: string) => <Tag>{formatText.tag(category)}</Tag>,
-            },
-            {
-              title: formatText.title('status'),
-              dataIndex: 'status',
-              key: 'status',
-              render: (status: string) => {
-                const colors = {
-                  pending: 'orange',
-                  in_progress: 'blue',
-                  resolved: 'green',
-                  closed: 'gray',
-                };
-                return <Tag color={colors[status as keyof typeof colors]}>{formatText.tag(status)}</Tag>;
+      {/* Submitted Feedback Forms Section */}
+      <Card title={formatText.title("Submitted Feedback Forms")}>
+        {submittedResponses.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '30px' }}>
+            <FormOutlined style={{ fontSize: '48px', color: '#d9d9d9' }} />
+            <p style={{ color: '#999', marginTop: '16px' }}>
+              No feedback forms submitted yet
+            </p>
+          </div>
+        ) : (
+          <Table
+            columns={[
+              {
+                title: formatText.title('Form Title'),
+                key: 'formTitle',
+                render: (record: any) => record.formDetails?.title || 'Unknown Form',
               },
-            },
-            {
-              title: formatText.title('submitted'),
-              dataIndex: 'submittedAt',
-              key: 'submittedAt',
-              render: (date: string) => new Date(date).toLocaleDateString(),
-            },
-          ]}
-          dataSource={grievances}
-          rowKey="id"
-          pagination={{ pageSize: 10 }}
-        />
+              {
+                title: formatText.title('Type'),
+                key: 'type',
+                render: () => <Tag color="blue">Feedback Form</Tag>,
+              },
+              {
+                title: formatText.title('Status'),
+                key: 'status',
+                render: () => <Tag color="green">Submitted</Tag>,
+              },
+              {
+                title: formatText.title('Submitted At'),
+                dataIndex: 'submittedAt',
+                key: 'submittedAt',
+                render: (date: string) => new Date(date).toLocaleDateString(),
+              },
+            ]}
+            dataSource={submittedResponses}
+            rowKey="id"
+            loading={loading}
+            pagination={{ pageSize: 10 }}
+          />
+        )}
+      </Card>
+
+      {/* Grievances Section */}
+      <Card title={formatText.title("Submitted Grievances")}>
+        {grievances.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '30px' }}>
+            <FileTextOutlined style={{ fontSize: '48px', color: '#d9d9d9' }} />
+            <p style={{ color: '#999', marginTop: '16px' }}>
+              No grievances submitted yet
+            </p>
+          </div>
+        ) : (
+          <Table
+            columns={[
+              {
+                title: formatText.title('Title'),
+                dataIndex: 'title',
+                key: 'title',
+              },
+              {
+                title: formatText.title('Type'),
+                key: 'type',
+                render: () => <Tag color="orange">Grievance</Tag>,
+              },
+              {
+                title: formatText.title('Category'),
+                dataIndex: 'category',
+                key: 'category',
+                render: (category: string) => <Tag>{formatText.tag(category)}</Tag>,
+              },
+              {
+                title: formatText.title('Status'),
+                dataIndex: 'status',
+                key: 'status',
+                render: (status: string) => {
+                  const colors = {
+                    pending: 'orange',
+                    in_progress: 'blue',
+                    resolved: 'green',
+                    closed: 'gray',
+                  };
+                  return <Tag color={colors[status as keyof typeof colors]}>{formatText.tag(status)}</Tag>;
+                },
+              },
+              {
+                title: formatText.title('Submitted'),
+                dataIndex: 'submittedAt',
+                key: 'submittedAt',
+                render: (date: string) => new Date(date).toLocaleDateString(),
+              },
+            ]}
+            dataSource={grievances}
+            rowKey="id"
+            loading={loading}
+            pagination={{ pageSize: 10 }}
+          />
+        )}
       </Card>
     </div>
   );
@@ -596,6 +700,9 @@ export const StudentDashboard: React.FC = () => {
             />
           </Card>
         </Col>
+      </Row>
+
+      <Row gutter={[16, 16]} className="mt-4">
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
@@ -658,6 +765,7 @@ export const StudentDashboard: React.FC = () => {
                   render: (date: string) => new Date(date).toLocaleDateString(),
                 },
               ]}
+              loading={loading}
               pagination={false}
               scroll={{ x: 400 }}
               size="small"
@@ -676,18 +784,13 @@ export const StudentDashboard: React.FC = () => {
                   key: 'title',
                 },
                 {
-                  title: formatText.title('department'),
-                  dataIndex: 'department',
-                  key: 'department',
-                },
-                {
                   title: formatText.title('action'),
                   key: 'action',
                   render: (_: any, record: FeedbackForm) => (
                     <Button
                       type="primary"
                       size="small"
-                      onClick={() => window.open(`/forms/${record.id}`, '_blank')}
+                      onClick={() => navigate(`/forms/${record.id}`)}
                     >
                       Fill Form
                     </Button>
@@ -701,6 +804,87 @@ export const StudentDashboard: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Recent Submissions Section */}
+      {(submittedResponses.length > 0 || grievances.length > 0) && (
+        <Card title={formatText.title("Recent Submissions")} className="mt-6">
+          <Row gutter={[16, 16]}>
+            {/* Recent Feedback Forms */}
+            {submittedResponses.length > 0 && (
+              <Col xs={24} lg={12}>
+                <div className="border rounded p-4">
+                  <Title level={4} className="mb-3">
+                    <FormOutlined className="mr-2" />
+                    Latest Feedback Forms
+                  </Title>
+                  <div className="space-y-2">
+                    {submittedResponses.slice(0, 3).map((response) => (
+                      <div key={response.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                        <div>
+                          <div className="font-medium text-sm">
+                            {response.formDetails?.title || 'Unknown Form'}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(response.submittedAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <Tag color="green">Completed</Tag>
+                      </div>
+                    ))}
+                    {submittedResponses.length > 3 && (
+                      <div className="text-center pt-2">
+                        <Button type="link" size="small" onClick={() => setCurrentView('history')}>
+                          View all {submittedResponses.length} submissions
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Col>
+            )}
+            
+            {/* Recent Grievances */}
+            {grievances.length > 0 && (
+              <Col xs={24} lg={submittedResponses.length > 0 ? 12 : 24}>
+                <div className="border rounded p-4">
+                  <Title level={4} className="mb-3">
+                    <FileTextOutlined className="mr-2" />
+                    Latest Grievances
+                  </Title>
+                  <div className="space-y-2">
+                    {grievances.slice(0, 3).map((grievance) => (
+                      <div key={grievance.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                        <div>
+                          <div className="font-medium text-sm">{grievance.title}</div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(grievance.submittedAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <Tag 
+                          color={
+                            grievance.status === 'pending' ? 'orange' :
+                            grievance.status === 'in_progress' ? 'blue' :
+                            grievance.status === 'resolved' ? 'green' : 'gray'
+                          }
+                        >
+                          {formatText.tag(grievance.status)}
+                        </Tag>
+                      </div>
+                    ))}
+                    {grievances.length > 3 && (
+                      <div className="text-center pt-2">
+                        <Button type="link" size="small" onClick={() => setCurrentView('grievances')}>
+                          View all {grievances.length} grievances
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Col>
+            )}
+          </Row>
+        </Card>
+      )}
     </div>
   );
 
@@ -778,17 +962,6 @@ export const StudentDashboard: React.FC = () => {
                 <Select.Option value="IT Support">IT Support</Select.Option>
                 <Select.Option value="Administration">Administration</Select.Option>
               </Select.OptGroup>
-            </Select>
-          </Form.Item>
-          <Form.Item
-            name="priority"
-            label="Priority"
-            rules={[{ required: true, message: 'Please select priority' }]}
-          >
-            <Select placeholder="Select priority">
-              <Select.Option value="low">Low</Select.Option>
-              <Select.Option value="medium">Medium</Select.Option>
-              <Select.Option value="high">High</Select.Option>
             </Select>
           </Form.Item>
           <Form.Item>

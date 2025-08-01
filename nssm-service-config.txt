@@ -1,0 +1,39 @@
+# NSSM Service Configuration for Your Feedback Hub
+# 
+# To install this service with NSSM:
+# 1. Download NSSM from https://nssm.cc/download
+# 2. Open Command Prompt as Administrator
+# 3. Navigate to your project directory
+# 4. Run the following commands:
+
+# Create the service
+nssm install "YourFeedbackHub" "C:\Program Files\nodejs\node.exe"
+
+# Set application parameters
+nssm set "YourFeedbackHub" AppParameters "node_modules\.bin\vite preview --port 3000 --host"
+
+# Set working directory (change this to your actual project path)
+nssm set "YourFeedbackHub" AppDirectory "C:\Users\DELL\Desktop\YSM\your-feedback-hub"
+
+# Set environment variables
+nssm set "YourFeedbackHub" AppEnvironmentExtra "NODE_ENV=production"
+
+# Set service description
+nssm set "YourFeedbackHub" Description "Your Feedback Hub - Student Feedback Management System"
+
+# Set service display name
+nssm set "YourFeedbackHub" DisplayName "Your Feedback Hub"
+
+# Configure service startup
+nssm set "YourFeedbackHub" Start SERVICE_AUTO_START
+
+# Configure logging
+nssm set "YourFeedbackHub" AppStdout "C:\logs\YourFeedbackHub\stdout.log"
+nssm set "YourFeedbackHub" AppStderr "C:\logs\YourFeedbackHub\stderr.log"
+
+# Start the service
+nssm start "YourFeedbackHub"
+
+# Alternative: If you prefer to use npm start
+# nssm set "YourFeedbackHub" AppParameters "run start"
+# nssm set "YourFeedbackHub" Application "C:\Program Files\nodejs\npm.cmd"

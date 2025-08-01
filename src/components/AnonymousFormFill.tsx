@@ -1,66 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Form, Input, Button, Radio, Checkbox, Rate, message, Typography, Space, Divider } from 'antd';
+import { Card, Form, Input, Button, Radio, Checkbox, Rate, message, Typography, Space, Divider, Select } from 'antd';
 import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
-import { FeedbackForm, FormQuestion } from '../types';
-import { getFeedbackFormById, submitFeedbackResponse, checkIfStudentSubmittedForm } from '../services/firebaseService';
-import { useAuth } from '../contexts/AuthContext';
+import { FeedbackForm, FormQuestion, YEARS } from '../types';
+import { getAnonymousFormById, submitAnonymousResponse } from '../services/firebaseService';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+const { Option } = Select;
 
-export const FeedbackFormFill: React.FC = () => {
+export const AnonymousFormFill: React.FC = () => {
   const { formId } = useParams<{ formId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [form] = Form.useForm();
   const [feedbackForm, setFeedbackForm] = useState<FeedbackForm | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [alreadySubmitted, setAlreadySubmitted] = useState(false);
 
   useEffect(() => {
-    if (formId && user?.id) {
+    if (formId) {
       loadFeedbackForm(formId);
     }
-  }, [formId, user?.id]);
+  }, [formId]);
 
   const loadFeedbackForm = async (id: string) => {
     try {
-      const formData = await getFeedbackFormById(id);
+      const formData = await getAnonymousFormById(id);
       if (formData) {
         setFeedbackForm(formData);
-        
-        // Check if the student has already submitted this form
-        if (user?.id) {
-          const hasSubmitted = await checkIfStudentSubmittedForm(user.id, id);
-          setAlreadySubmitted(hasSubmitted);
-          
-          if (hasSubmitted) {
-            message.info('You have already submitted this form');
-          }
-        }
       } else {
         message.error('Form not found or is no longer available');
-        navigate('/dashboard');
+        navigate('/login');
       }
     } catch (error) {
       console.error('Error loading form:', error);
       message.error('Error loading form');
-      navigate('/dashboard');
+      navigate('/login');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSubmit = async (values: any) => {
-    if (!feedbackForm || !user) return;
-
-    // Prevent re-submission
-    if (alreadySubmitted) {
-      message.warning('You have already submitted this form');
-      return;
-    }
+    if (!feedbackForm) return;
 
     setSubmitting(true);
     try {
@@ -71,23 +53,16 @@ export const FeedbackFormFill: React.FC = () => {
         responses[question.id] = values[question.id] || '';
       });
 
-      await submitFeedbackResponse({
+      await submitAnonymousResponse({
         formId: feedbackForm.id,
-        studentId: user.id,
+        studentYear: values.studentYear,
         responses,
       });
 
-      message.success('Feedback submitted successfully!');
-      setAlreadySubmitted(true); // Mark as submitted to prevent re-submission
-      
-      // Emit custom event to notify other components
-      window.dispatchEvent(new CustomEvent('form-submitted', { 
-        detail: { formId: feedbackForm.id, studentId: user.id } 
-      }));
-      
-      navigate('/dashboard');
+      message.success('Anonymous feedback submitted successfully!');
+      navigate('/login');
     } catch (error) {
-      console.error('Error submitting feedback:', error);
+      console.error('Error submitting anonymous feedback:', error);
       message.error('Error submitting feedback');
     } finally {
       setSubmitting(false);
@@ -153,7 +128,7 @@ export const FeedbackFormFill: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <Text>Loading form...</Text>
@@ -164,30 +139,13 @@ export const FeedbackFormFill: React.FC = () => {
 
   if (!feedbackForm) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <Title level={3} className="text-red-600">Form Not Found</Title>
           <Text>The requested form could not be found.</Text>
           <br />
-          <Button type="primary" onClick={() => navigate('/dashboard')} className="mt-4">
-            Back to Dashboard
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (alreadySubmitted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Title level={3} className="text-green-600">Form Already Submitted</Title>
-          <Text>You have already submitted this form. Thank you for your feedback!</Text>
-          <br />
-          <Text type="secondary">Form: {feedbackForm.title}</Text>
-          <br />
-          <Button type="primary" onClick={() => navigate('/dashboard')} className="mt-4">
-            Back to Dashboard
+          <Button type="primary" onClick={() => navigate('/login')} className="mt-4">
+            Back to Login
           </Button>
         </div>
       </div>
@@ -201,19 +159,25 @@ export const FeedbackFormFill: React.FC = () => {
           <div className="mb-6">
             <Button
               icon={<ArrowLeftOutlined />}
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/login')}
               className="mb-4"
             >
-              Back to Dashboard
+              Back to Login
             </Button>
             
             <Title level={2} className="text-center mb-2">
               {feedbackForm.title}
             </Title>
             
-            <Text className="text-gray-600 text-center block mb-4">
+            <Text className="text-gray-600 text-center block mb-2">
               {feedbackForm.description}
             </Text>
+            
+            <div className="text-center mb-4">
+              <Text type="warning" strong>
+                🔒 Anonymous Form - Your identity will remain confidential
+              </Text>
+            </div>
             
             <Divider />
           </div>
@@ -224,6 +188,33 @@ export const FeedbackFormFill: React.FC = () => {
             onFinish={handleSubmit}
             className="space-y-6"
           >
+            {/* Student Year Selection */}
+            <Card className="bg-blue-50 border-blue-200">
+              <Form.Item
+                name="studentYear"
+                label={
+                  <Text strong>
+                    Your Academic Year <Text className="text-red-500">*</Text>
+                  </Text>
+                }
+                rules={[
+                  {
+                    required: true,
+                    message: 'Please select your academic year',
+                  },
+                ]}
+              >
+                <Select placeholder="Select your academic year" size="large">
+                  {YEARS.map((year) => (
+                    <Option key={year} value={year}>
+                      Year {year}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Card>
+
+            {/* Form Questions */}
             {feedbackForm.questions.map((question, index) => (
               <Card key={question.id} className="bg-gray-50">
                 <Form.Item
@@ -265,7 +256,7 @@ export const FeedbackFormFill: React.FC = () => {
                 icon={<SendOutlined />}
                 className="px-8"
               >
-                Submit Feedback
+                Submit Anonymous Feedback
               </Button>
             </div>
           </Form>

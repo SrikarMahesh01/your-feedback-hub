@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Simple globe icon for small size -->
+  <circle cx="8" cy="8" r="7" fill="#4A90E2" stroke="#2E5B8A" stroke-width="1"/>
+  
+  <!-- Simplified continents -->
+  <g fill="#2E5B8A">
+    <path d="M4 4 Q6 3 8 4 Q10 3 12 4 Q11 6 8 5 Q5 6 4 4"/>
+    <path d="M3 7 Q5 8 7 7 Q9 8 11 7 Q13 8 13 9 Q11 10 9 9 Q7 10 5 9 Q3 10 3 9 Q3 8 3 7"/>
+    <path d="M5 11 Q7 12 9 11 Q11 12 12 11 Q11 13 9 12 Q7 13 5 12 Q4 13 5 11"/>
+  </g>
+  
+  <!-- Grid lines -->
+  <g stroke="#2E5B8A" stroke-width="0.5" fill="none" opacity="0.6">
+    <line x1="1" y1="8" x2="15" y2="8"/>
+    <line x1="8" y1="1" x2="8" y2="15"/>
+    <ellipse cx="8" cy="8" rx="7" ry="3.5"/>
+    <ellipse cx="8" cy="8" rx="3.5" ry="7"/>
+  </g>
+</svg>

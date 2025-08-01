@@ -12,7 +12,9 @@ import {
   getFeedbackResponsesByCreator,
   createFeedbackForm,
   updateGrievanceStatus,
-  exportResponsesToCSV
+  exportResponsesToCSV,
+  exportStudentsToCSV,
+  deleteFeedbackForm
 } from '../../services/firebaseService';
 import { Profile } from '../Profile/Profile';
 
@@ -30,8 +32,15 @@ export const AdminDashboard: React.FC = () => {
   const [feedbackResponses, setFeedbackResponses] = useState<any[]>([]);
   const [isFormModalVisible, setIsFormModalVisible] = useState(false);
   const [isResponseModalVisible, setIsResponseModalVisible] = useState(false);
+  const [isFormResponsesModalVisible, setIsFormResponsesModalVisible] = useState(false);
+  const [isGrievanceModalVisible, setIsGrievanceModalVisible] = useState(false);
+  const [isGrievanceUpdateModalVisible, setIsGrievanceUpdateModalVisible] = useState(false);
   const [selectedResponse, setSelectedResponse] = useState<any>(null);
+  const [selectedForm, setSelectedForm] = useState<FeedbackForm | null>(null);
+  const [selectedFormResponses, setSelectedFormResponses] = useState<any[]>([]);
+  const [selectedGrievance, setSelectedGrievance] = useState<Grievance | null>(null);
   const [form] = Form.useForm();
+  const [grievanceForm] = Form.useForm();
   
   // State for dynamic form builder
   const [formQuestions, setFormQuestions] = useState<any[]>([
@@ -219,9 +228,8 @@ export const AdminDashboard: React.FC = () => {
       responses.forEach((response, index) => {
         console.log(`Response ${index + 1}:`, {
           formTitle: response.formDetails?.title,
-          studentName: response.studentDetails?.name || 'Anonymous',
-          submittedAt: response.submittedAt,
-          isAnonymous: response.isAnonymous
+          studentName: response.studentDetails?.name || 'Unknown',
+          submittedAt: response.submittedAt
         });
       });
     } catch (error) {
@@ -233,8 +241,71 @@ export const AdminDashboard: React.FC = () => {
     try {
       await updateGrievanceStatus(grievanceId, newStatus);
       await loadGrievances();
+      message.success('Grievance status updated successfully!');
     } catch (error) {
       console.error('Error updating grievance status:', error);
+      message.error('Failed to update grievance status');
+    }
+  };
+
+  const handleDeleteForm = async (formId: string, formTitle: string) => {
+    Modal.confirm({
+      title: 'Delete Feedback Form',
+      content: `Are you sure you want to delete "${formTitle}"? This will also delete all responses associated with this form. This action cannot be undone.`,
+      okText: 'Yes, Delete',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          await deleteFeedbackForm(formId);
+          message.success('Form and all associated responses deleted successfully!');
+          await loadFeedbackForms(); // Refresh the forms list
+          await loadFeedbackResponses(); // Refresh the responses list
+        } catch (error) {
+          console.error('Error deleting form:', error);
+          message.error('Failed to delete form');
+        }
+      },
+    });
+  };
+
+  const handleViewGrievance = (grievance: Grievance) => {
+    setSelectedGrievance(grievance);
+    setIsGrievanceModalVisible(true);
+  };
+
+  const handleUpdateGrievanceModal = (grievance: Grievance) => {
+    setSelectedGrievance(grievance);
+    grievanceForm.setFieldsValue({
+      status: grievance.status,
+      comment: ''
+    });
+    setIsGrievanceUpdateModalVisible(true);
+  };
+
+  const handleGrievanceUpdate = async (values: any) => {
+    if (!selectedGrievance || !user?.id) return;
+
+    try {
+      let adminComments = selectedGrievance.adminComments || [];
+      
+      // Add new comment if provided
+      if (values.comment?.trim()) {
+        const newComment = `[${new Date().toLocaleString()}] ${user.name || 'Admin'}: ${values.comment}`;
+        adminComments = [...adminComments, newComment];
+      }
+
+      // Update status and comments
+      await updateGrievanceStatus(selectedGrievance.id, values.status, adminComments);
+
+      message.success('Grievance updated successfully!');
+      setIsGrievanceUpdateModalVisible(false);
+      grievanceForm.resetFields();
+      setSelectedGrievance(null);
+      await loadGrievances();
+    } catch (error) {
+      console.error('Error updating grievance:', error);
+      message.error('Failed to update grievance');
     }
   };
 
@@ -312,11 +383,10 @@ export const AdminDashboard: React.FC = () => {
           
           return cleanQuestion;
         }),
-        targetYear: values.targetYear || 'all',
-        targetBranch: values.targetBranch || 'all',
-        department: values.targetBranch || 'all', // Use targetBranch as department
+        targetYear: values.targetYear || 'ALL',
+        targetBranch: values.targetBranch || 'ALL',
+        department: values.targetBranch || 'ALL', // Use targetBranch as department
         createdBy: user.id,
-        isAnonymous: Boolean(values.isAnonymous),
         isActive: true,
       };
 
@@ -366,11 +436,10 @@ export const AdminDashboard: React.FC = () => {
     const formResponses = feedbackResponses.filter(r => r.formId === form.id);
     console.log(`Viewing responses for form: ${form.title}`, formResponses);
     
-    // You can either show a modal with all responses or switch to responses view
-    setCurrentView('responses');
-    
-    // Optionally, you can set a filter state to show only responses for this form
-    // For now, we'll just switch to the responses view
+    // Set the selected form and its responses for the modal
+    setSelectedForm(form);
+    setSelectedFormResponses(formResponses);
+    setIsFormResponsesModalVisible(true);
   };
 
   const handleExportResponses = () => {
@@ -401,6 +470,25 @@ export const AdminDashboard: React.FC = () => {
     } catch (error) {
       console.error('Error exporting CSV:', error);
       message.error('Failed to export CSV');
+    }
+  };
+
+  const handleExportStudents = () => {
+    if (students.length === 0) {
+      message.warning('No students to export');
+      return;
+    }
+    
+    try {
+      const departmentName = Array.isArray(user?.department) 
+        ? user.department.join('_') 
+        : user?.department || 'Department';
+      
+      exportStudentsToCSV(students, departmentName);
+      message.success('Students CSV exported successfully!');
+    } catch (error) {
+      console.error('Error exporting students CSV:', error);
+      message.error('Failed to export students CSV');
     }
   };
 
@@ -527,41 +615,34 @@ export const AdminDashboard: React.FC = () => {
               },
             },
             {
-              title: 'Priority',
-              dataIndex: 'priority',
-              key: 'priority',
-              render: (priority: string) => {
-                const colors = {
-                  high: 'red',
-                  medium: 'orange',
-                  low: 'green',
-                };
-                return <Tag color={colors[priority as keyof typeof colors]}>{formatText.tag(priority)}</Tag>;
-              },
-            },
-            {
               title: 'Actions',
               key: 'actions',
               render: (_, record) => (
                 <Space>
                   <Button
                     size="small"
-                    onClick={() => handleUpdateGrievanceStatus(record.id, 'in_progress')}
+                    onClick={() => handleViewGrievance(record)}
                   >
-                    In Progress
+                    View
                   </Button>
                   <Button
                     size="small"
                     type="primary"
-                    onClick={() => handleUpdateGrievanceStatus(record.id, 'resolved')}
+                    onClick={() => handleUpdateGrievanceModal(record)}
                   >
-                    Resolve
+                    Update
                   </Button>
                 </Space>
               ),
             },
           ]}
-          pagination={{ pageSize: 10 }}
+          pagination={{ 
+            pageSize: 50, 
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '25', '50', '100'],
+            showQuickJumper: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} grievances`
+          }}
         />
       </Card>
 
@@ -579,11 +660,13 @@ export const AdminDashboard: React.FC = () => {
               title: 'Target Year',
               dataIndex: 'targetYear',
               key: 'targetYear',
+              render: (year: string) => (year === 'ALL' || year === 'all') ? 'All Years' : `Year ${year}`,
             },
             {
               title: 'Target Branch',
               dataIndex: 'targetBranch',
               key: 'targetBranch',
+              render: (branch: string) => (branch === 'ALL' || branch === 'all') ? 'All Branches' : branch,
             },
             {
               title: 'Status',
@@ -601,8 +684,30 @@ export const AdminDashboard: React.FC = () => {
               key: 'responses',
               render: (responses: any[]) => responses?.length || 0,
             },
+            {
+              title: 'Actions',
+              key: 'actions',
+              render: (_, record) => (
+                <Space>
+                  <Button
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => handleDeleteForm(record.id, record.title)}
+                  >
+                    Delete
+                  </Button>
+                </Space>
+              ),
+            },
           ]}
-          pagination={{ pageSize: 10 }}
+          pagination={{ 
+            pageSize: 50, 
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '25', '50', '100'],
+            showQuickJumper: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} forms`
+          }}
         />
       </Card>
 
@@ -619,26 +724,13 @@ export const AdminDashboard: React.FC = () => {
           layout="vertical"
           onFinish={handleCreateFeedbackForm}
         >
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="title"
-                label="Form Title"
-                rules={[{ required: true, message: 'Please enter form title' }]}
-              >
-                <Input placeholder="Enter form title" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="isAnonymous"
-                label="Anonymous Form"
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            name="title"
+            label="Form Title"
+            rules={[{ required: true, message: 'Please enter form title' }]}
+          >
+            <Input placeholder="Enter form title" />
+          </Form.Item>
           
           <Form.Item
             name="description"
@@ -660,7 +752,7 @@ export const AdminDashboard: React.FC = () => {
                   <Select.Option value="2">2nd Year</Select.Option>
                   <Select.Option value="3">3rd Year</Select.Option>
                   <Select.Option value="4">4th Year</Select.Option>
-                  <Select.Option value="all">All Years</Select.Option>
+                  <Select.Option value="ALL">All Years</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -674,7 +766,7 @@ export const AdminDashboard: React.FC = () => {
                   {DEPARTMENTS.map(dept => (
                     <Select.Option key={dept} value={dept}>{dept}</Select.Option>
                   ))}
-                  <Select.Option value="all">All Branches</Select.Option>
+                  <Select.Option value="ALL">All Branches</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -889,7 +981,7 @@ export const AdminDashboard: React.FC = () => {
               <div className="text-lg font-semibold mb-4">{selectedResponse.formDetails?.title}</div>
               
               <div className="mb-4">
-                <strong>Student:</strong> {selectedResponse.isAnonymous ? 'Anonymous' : selectedResponse.studentDetails?.name}
+                <strong>Student:</strong> {selectedResponse.studentDetails?.name || 'Unknown'}
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -991,19 +1083,6 @@ export const AdminDashboard: React.FC = () => {
               },
             },
             {
-              title: formatText.title('priority'),
-              dataIndex: 'priority',
-              key: 'priority',
-              render: (priority: string) => {
-                const colors = {
-                  high: 'red',
-                  medium: 'orange',
-                  low: 'green',
-                };
-                return <Tag color={colors[priority as keyof typeof colors]}>{formatText.tag(priority)}</Tag>;
-              },
-            },
-            {
               title: formatText.title('submitted'),
               dataIndex: 'submittedAt',
               key: 'submittedAt',
@@ -1040,7 +1119,13 @@ export const AdminDashboard: React.FC = () => {
               ),
             },
           ]}
-          pagination={{ pageSize: 10 }}
+          pagination={{ 
+            pageSize: 50, 
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '25', '50', '100'],
+            showQuickJumper: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} grievances`
+          }}
         />
       </Card>
     </div>
@@ -1090,11 +1175,13 @@ export const AdminDashboard: React.FC = () => {
               title: 'Target Year',
               dataIndex: 'targetYear',
               key: 'targetYear',
+              render: (year: string) => (year === 'ALL' || year === 'all') ? 'All Years' : `Year ${year}`,
             },
             {
               title: 'Target Branch',
               dataIndex: 'targetBranch',
               key: 'targetBranch',
+              render: (branch: string) => (branch === 'ALL' || branch === 'all') ? 'All Branches' : branch,
             },
             {
               title: 'Status',
@@ -1103,16 +1190,6 @@ export const AdminDashboard: React.FC = () => {
               render: (isActive: boolean) => (
                 <Tag color={isActive ? 'green' : 'red'}>
                   {isActive ? 'Active' : 'Inactive'}
-                </Tag>
-              ),
-            },
-            {
-              title: 'Anonymous',
-              dataIndex: 'isAnonymous',
-              key: 'isAnonymous',
-              render: (isAnonymous: boolean) => (
-                <Tag color={isAnonymous ? 'blue' : 'default'}>
-                  {isAnonymous ? 'Anonymous' : 'Named'}
                 </Tag>
               ),
             },
@@ -1129,7 +1206,13 @@ export const AdminDashboard: React.FC = () => {
               render: (date: string) => new Date(date).toLocaleDateString(),
             },
           ]}
-          pagination={{ pageSize: 10 }}
+          pagination={{ 
+            pageSize: 50, 
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '25', '50', '100'],
+            showQuickJumper: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} forms`
+          }}
         />
       </Card>
     </div>
@@ -1179,6 +1262,38 @@ export const AdminDashboard: React.FC = () => {
         </Col>
       </Row>
 
+      {/* Additional Form Statistics Row */}
+      <Row gutter={[16, 16]} className="mt-4">
+        <Col xs={24} sm={8}>
+          <Card>
+            <Statistic
+              title="Total Forms"
+              value={feedbackForms.length}
+              prefix={<FormOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card>
+            <Statistic
+              title="Inactive Forms"
+              value={feedbackForms.filter(f => !f.isActive).length}
+              valueStyle={{ color: '#ff4d4f' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card>
+            <Statistic
+              title="Form Response Rate"
+              value={feedbackForms.length > 0 ? Math.round((feedbackResponses.length / feedbackForms.length) * 100) / 100 : 0}
+              suffix="avg/form"
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
       <Card 
         title="Recent Responses"
         extra={
@@ -1210,16 +1325,10 @@ export const AdminDashboard: React.FC = () => {
               key: 'student',
               render: (_, record) => (
                 <div>
-                  {record.isAnonymous ? (
-                    <Tag color="blue">Anonymous</Tag>
-                  ) : (
-                    <div>
-                      <div className="font-medium">{record.studentDetails?.name || 'N/A'}</div>
-                      <div className="text-sm text-gray-500">
-                        {record.studentDetails?.rollNumber} - Year {record.studentDetails?.year}
-                      </div>
-                    </div>
-                  )}
+                  <div className="font-medium">{record.studentDetails?.name || 'Unknown'}</div>
+                  <div className="text-sm text-gray-500">
+                    {record.studentDetails?.rollNumber} - Year {record.studentDetails?.year}
+                  </div>
                 </div>
               ),
             },
@@ -1253,7 +1362,13 @@ export const AdminDashboard: React.FC = () => {
             },
           ]}
           rowKey="id"
-          pagination={{ pageSize: 10 }}
+          pagination={{ 
+            pageSize: 100, 
+            showSizeChanger: true,
+            pageSizeOptions: ['25', '50', '100', '200', '500'],
+            showQuickJumper: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} responses`
+          }}
           scroll={{ x: 800 }}
         />
       </Card>
@@ -1272,7 +1387,6 @@ export const AdminDashboard: React.FC = () => {
                   <div className="space-y-2">
                     <div><strong>Target:</strong> Year {form.targetYear}, {form.targetBranch}</div>
                     <div><strong>Status:</strong> <Tag color={form.isActive ? 'green' : 'red'}>{form.isActive ? 'Active' : 'Inactive'}</Tag></div>
-                    <div><strong>Type:</strong> <Tag color={form.isAnonymous ? 'blue' : 'default'}>{form.isAnonymous ? 'Anonymous' : 'Named'}</Tag></div>
                     <div><strong>Created:</strong> {new Date(form.createdAt).toLocaleDateString()}</div>
                   </div>
                   <div className="mt-4">
@@ -1306,62 +1420,129 @@ export const AdminDashboard: React.FC = () => {
 
   const renderStudents = () => (
     <div className="space-y-6">
-      <div>
-        <Title level={2}>Students</Title>
-        <p className="text-gray-600">
-          View students in your department
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <Title level={2}>{formatText.title("Students")}</Title>
+          <p className="text-gray-600">
+            View students in your department ({Array.isArray(user?.department) ? user.department.join(', ') : user?.department})
+          </p>
+        </div>
+        <Button
+          type="primary"
+          icon={<DownloadOutlined />}
+          onClick={handleExportStudents}
+          disabled={students.length === 0}
+        >
+          {formatText.title("Export Students CSV")}
+        </Button>
       </div>
 
-      <Card>
-        <Table
-          dataSource={students}
-          rowKey="id"
-          columns={[
-            {
-              title: 'Name',
-              dataIndex: 'name',
-              key: 'name',
-            },
-            {
-              title: 'Email',
-              dataIndex: 'email',
-              key: 'email',
-            },
-            {
-              title: 'Roll Number',
-              dataIndex: 'rollNumber',
-              key: 'rollNumber',
-            },
-            {
-              title: 'Year',
-              dataIndex: 'year',
-              key: 'year',
-            },
-            {
-              title: 'Branch',
-              dataIndex: 'branch',
-              key: 'branch',
-            },
-            {
-              title: 'Status',
-              dataIndex: 'isActive',
-              key: 'isActive',
-              render: (isActive: boolean) => (
-                <Tag color={isActive !== false ? 'green' : 'red'}>
-                  {isActive !== false ? 'Active' : 'Inactive'}
-                </Tag>
-              ),
-            },
-            {
-              title: 'Joined',
-              dataIndex: 'createdAt',
-              key: 'createdAt',
-              render: (date: string) => new Date(date).toLocaleDateString(),
-            },
-          ]}
-          pagination={{ pageSize: 10 }}
-        />
+      <Card
+        title={
+          <div className="flex justify-between items-center">
+            <span>{formatText.title("Department Students")}</span>
+            <Tag color="blue">{students.length} {formatText.title("students")}</Tag>
+          </div>
+        }
+      >
+        {students.length === 0 ? (
+          <div className="text-center py-8">
+            <TeamOutlined style={{ fontSize: '48px', color: '#d9d9d9' }} />
+            <div className="text-gray-500 text-lg mt-4 mb-2">
+              {formatText.title("No Students Found")}
+            </div>
+            <div className="text-gray-400 text-sm">
+              No students found in your department. Students will appear here once they register.
+            </div>
+          </div>
+        ) : (
+          <Table
+            dataSource={students}
+            rowKey="id"
+            columns={[
+              {
+                title: formatText.title('S.No'),
+                key: 'serialNumber',
+                width: 80,
+                render: (_, __, index) => index + 1,
+              },
+              {
+                title: formatText.title('Name'),
+                dataIndex: 'name',
+                key: 'name',
+                sorter: (a, b) => a.name.localeCompare(b.name),
+              },
+              {
+                title: formatText.title('Email'),
+                dataIndex: 'email',
+                key: 'email',
+                render: (email: string) => (
+                  <a href={`mailto:${email}`} className="text-blue-600">
+                    {email}
+                  </a>
+                ),
+              },
+              {
+                title: formatText.title('Roll Number'),
+                dataIndex: 'rollNumber',
+                key: 'rollNumber',
+                sorter: (a, b) => (a.rollNumber || '').localeCompare(b.rollNumber || ''),
+              },
+              {
+                title: formatText.title('Year'),
+                dataIndex: 'year',
+                key: 'year',
+                sorter: (a, b) => (a.year || '').localeCompare(b.year || ''),
+                render: (year: string) => year ? `Year ${year}` : 'N/A',
+              },
+              {
+                title: formatText.title('Branch'),
+                dataIndex: 'branch',
+                key: 'branch',
+                sorter: (a, b) => (a.branch || '').localeCompare(b.branch || ''),
+                render: (branch: string) => (
+                  <Tag color="purple">{formatText.department(branch)}</Tag>
+                ),
+              },
+              {
+                title: formatText.title('Status'),
+                dataIndex: 'isActive',
+                key: 'isActive',
+                filters: [
+                  { text: 'Active', value: true },
+                  { text: 'Inactive', value: false },
+                ],
+                onFilter: (value, record) => record.isActive === value,
+                render: (isActive: boolean) => (
+                  <Tag color={isActive !== false ? 'green' : 'red'}>
+                    {formatText.status(isActive !== false ? 'active' : 'inactive')}
+                  </Tag>
+                ),
+              },
+              {
+                title: formatText.title('Joined'),
+                dataIndex: 'createdAt',
+                key: 'createdAt',
+                sorter: (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+                render: (date: string) => (
+                  <div className="text-sm">
+                    <div>{new Date(date).toLocaleDateString()}</div>
+                    <div className="text-gray-500">{new Date(date).toLocaleTimeString()}</div>
+                  </div>
+                ),
+              },
+            ]}
+            pagination={{ 
+              pageSize: 10,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total, range) => 
+                `${range[0]}-${range[1]} of ${total} students`,
+            }}
+            scroll={{ x: 800 }}
+            size="middle"
+          />
+        )}
       </Card>
     </div>
   );
@@ -1447,9 +1628,7 @@ export const AdminDashboard: React.FC = () => {
 
             {/* Student Information */}
             <Card size="small" title="Student Information">
-              {selectedResponse.isAnonymous ? (
-                <Tag color="blue">Anonymous Response</Tag>
-              ) : selectedResponse.studentDetails ? (
+              {selectedResponse.studentDetails ? (
                 <div className="space-y-2">
                   <div><strong>Name:</strong> {selectedResponse.studentDetails.name}</div>
                   <div><strong>Email:</strong> {selectedResponse.studentDetails.email}</div>
@@ -1479,6 +1658,331 @@ export const AdminDashboard: React.FC = () => {
             </Card>
           </div>
         )}
+      </Modal>
+
+      {/* Form Responses Excel-like View Modal */}
+      <Modal
+        title={selectedForm ? `${formatText.title("responses for")} "${selectedForm.title}"` : formatText.title("form responses")}
+        open={isFormResponsesModalVisible}
+        onCancel={() => {
+          setIsFormResponsesModalVisible(false);
+          setSelectedForm(null);
+          setSelectedFormResponses([]);
+        }}
+        footer={[
+          <Button 
+            key="export" 
+            type="primary" 
+            icon={<DownloadOutlined />}
+            onClick={() => selectedForm && handleExportFormResponses(selectedForm)}
+            disabled={selectedFormResponses.length === 0}
+          >
+            {formatText.title("export csv")}
+          </Button>,
+          <Button 
+            key="close" 
+            onClick={() => {
+              setIsFormResponsesModalVisible(false);
+              setSelectedForm(null);
+              setSelectedFormResponses([]);
+            }}
+          >
+            {formatText.title("close")}
+          </Button>
+        ]}
+        width="95%"
+        style={{ top: 20 }}
+        className="form-responses-modal"
+      >
+        {selectedForm && selectedFormResponses && (
+          <div className="space-y-4">
+            {/* Form Information Header */}
+            <Card size="small" className="bg-blue-50">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div><strong>{formatText.title("form")}:</strong> {selectedForm.title}</div>
+                <div><strong>{formatText.title("department")}:</strong> {selectedForm.department}</div>
+                <div><strong>{formatText.title("target")}:</strong> Year {selectedForm.targetYear}, {selectedForm.targetBranch}</div>
+                <div><strong>{formatText.title("total responses")}:</strong> {selectedFormResponses.length}</div>
+              </div>
+            </Card>
+
+            {/* Excel-like Table */}
+            {selectedFormResponses.length > 0 ? (
+              <div className="overflow-auto" style={{ maxHeight: '60vh' }}>
+                <Table
+                  dataSource={selectedFormResponses.map((response, index) => ({
+                    ...response,
+                    serialNumber: index + 1,
+                    studentName: response.studentDetails?.name || 'N/A',
+                    studentEmail: response.studentDetails?.email || 'N/A',
+                    studentRoll: response.studentDetails?.rollNumber || 'N/A',
+                    studentYear: response.studentDetails?.year || 'N/A',
+                    studentBranch: response.studentDetails?.branch || 'N/A',
+                    submissionDate: new Date(response.submittedAt).toLocaleDateString(),
+                    submissionTime: new Date(response.submittedAt).toLocaleTimeString(),
+                  }))}
+                  columns={[
+                    {
+                      title: formatText.title('S.No'),
+                      dataIndex: 'serialNumber',
+                      key: 'serialNumber',
+                      width: 60,
+                      fixed: 'left' as const,
+                    },
+                    {
+                      title: formatText.title('student name'),
+                      dataIndex: 'studentName',
+                      key: 'studentName',
+                      width: 150,
+                      fixed: 'left' as const,
+                    },
+                    {
+                      title: formatText.title('roll number'),
+                      dataIndex: 'studentRoll',
+                      key: 'studentRoll',
+                      width: 120,
+                    },
+                    {
+                      title: formatText.title('year'),
+                      dataIndex: 'studentYear',
+                      key: 'studentYear',
+                      width: 80,
+                    },
+                    {
+                      title: formatText.title('branch'),
+                      dataIndex: 'studentBranch',
+                      key: 'studentBranch',
+                      width: 100,
+                    },
+                    // Dynamic columns for each question
+                    ...selectedForm.questions.map((question, qIndex) => ({
+                      title: (
+                        <div className="max-w-xs">
+                          <div className="font-semibold text-xs">
+                            {formatText.title(`Q${qIndex + 1}`)}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1 line-clamp-2">
+                            {question.question.length > 50 
+                              ? `${question.question.substring(0, 50)}...` 
+                              : question.question
+                            }
+                          </div>
+                        </div>
+                      ),
+                      dataIndex: ['responses', question.id],
+                      key: `question_${question.id}`,
+                      width: 200,
+                      render: (value: any) => {
+                        if (!value) return <span className="text-gray-400">No response</span>;
+                        
+                        if (Array.isArray(value)) {
+                          return (
+                            <div className="flex flex-wrap gap-1">
+                              {value.map((item, idx) => (
+                                <Tag key={idx} color="blue">
+                                  {item}
+                                </Tag>
+                              ))}
+                            </div>
+                          );
+                        }
+                        
+                        if (typeof value === 'string' && value.length > 100) {
+                          return (
+                            <div title={value} className="max-w-xs">
+                              {value.substring(0, 100)}...
+                            </div>
+                          );
+                        }
+                        
+                        return <div className="max-w-xs break-words">{value}</div>;
+                      },
+                    })),
+                    {
+                      title: formatText.title('submission date'),
+                      dataIndex: 'submissionDate',
+                      key: 'submissionDate',
+                      width: 120,
+                    },
+                    {
+                      title: formatText.title('submission time'),
+                      dataIndex: 'submissionTime',
+                      key: 'submissionTime',
+                      width: 120,
+                    },
+                  ]}
+                  pagination={{
+                    pageSize: 1000,
+                    showSizeChanger: true,
+                    showQuickJumper: true,
+                    pageSizeOptions: ['50', '100', '200', '500', '1000', '2000'],
+                    showTotal: (total, range) => 
+                      `${range[0]}-${range[1]} of ${total} responses`,
+                  }}
+                  scroll={{ x: 'max-content', y: 400 }}
+                  size="small"
+                  bordered
+                  rowKey="id"
+                  className="excel-like-table"
+                />
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="text-gray-500 text-lg mb-2">
+                  {formatText.title("no responses found")}
+                </div>
+                <div className="text-gray-400 text-sm">
+                  This form hasn't received any responses yet.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Grievance Details Modal */}
+      <Modal
+        title={selectedGrievance ? `${formatText.title("grievance details")} - ${selectedGrievance.title}` : formatText.title("grievance details")}
+        open={isGrievanceModalVisible}
+        onCancel={() => {
+          setIsGrievanceModalVisible(false);
+          setSelectedGrievance(null);
+        }}
+        footer={[
+          <Button 
+            key="update" 
+            type="primary"
+            onClick={() => {
+              setIsGrievanceModalVisible(false);
+              handleUpdateGrievanceModal(selectedGrievance!);
+            }}
+          >
+            {formatText.title("update status")}
+          </Button>,
+          <Button 
+            key="close" 
+            onClick={() => {
+              setIsGrievanceModalVisible(false);
+              setSelectedGrievance(null);
+            }}
+          >
+            {formatText.title("close")}
+          </Button>
+        ]}
+        width={800}
+      >
+        {selectedGrievance && (
+          <div className="space-y-4">
+            <Row gutter={16}>
+              <Col span={12}>
+                <div><strong>{formatText.title("student name")}:</strong> {selectedGrievance.studentName}</div>
+              </Col>
+              <Col span={12}>
+                <div><strong>{formatText.title("category")}:</strong> 
+                  <Tag color="blue" className="ml-2">
+                    {formatText.tag(selectedGrievance.category)}
+                  </Tag>
+                </div>
+              </Col>
+            </Row>
+            
+            <Row gutter={16}>
+              <Col span={24}>
+                <div><strong>{formatText.title("department")}:</strong> {selectedGrievance.department}</div>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <div><strong>{formatText.title("status")}:</strong> 
+                  <Tag color={selectedGrievance.status === 'pending' ? 'orange' : selectedGrievance.status === 'in_progress' ? 'blue' : selectedGrievance.status === 'resolved' ? 'green' : 'gray'} className="ml-2">
+                    {formatText.status(selectedGrievance.status)}
+                  </Tag>
+                </div>
+              </Col>
+              <Col span={12}>
+                <div><strong>{formatText.title("submitted at")}:</strong> {new Date(selectedGrievance.submittedAt).toLocaleString()}</div>
+              </Col>
+            </Row>
+
+            <div>
+              <strong>{formatText.title("description")}:</strong>
+              <div className="mt-2 p-3 bg-gray-50 rounded border">
+                {selectedGrievance.description}
+              </div>
+            </div>
+
+            {selectedGrievance.adminComments && selectedGrievance.adminComments.length > 0 && (
+              <div>
+                <strong>{formatText.title("admin comments")}:</strong>
+                <div className="mt-2 space-y-2">
+                  {selectedGrievance.adminComments.map((comment, index) => (
+                    <div key={index} className="p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                      {comment}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Update Grievance Modal */}
+      <Modal
+        title={selectedGrievance ? `${formatText.title("update grievance")} - ${selectedGrievance.title}` : formatText.title("update grievance")}
+        open={isGrievanceUpdateModalVisible}
+        onCancel={() => {
+          setIsGrievanceUpdateModalVisible(false);
+          setSelectedGrievance(null);
+          grievanceForm.resetFields();
+        }}
+        footer={null}
+        width={600}
+      >
+        <Form
+          form={grievanceForm}
+          layout="vertical"
+          onFinish={handleGrievanceUpdate}
+        >
+          <Form.Item
+            name="status"
+            label={formatText.title("status")}
+            rules={[{ required: true, message: 'Please select a status' }]}
+          >
+            <Select placeholder="Select status">
+              <Select.Option value="pending">{formatText.title("pending")}</Select.Option>
+              <Select.Option value="in_progress">{formatText.title("in progress")}</Select.Option>
+              <Select.Option value="resolved">{formatText.title("resolved")}</Select.Option>
+              <Select.Option value="closed">{formatText.title("closed")}</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="comment"
+            label={formatText.title("admin comment (optional)")}
+          >
+            <Input.TextArea 
+              rows={4} 
+              placeholder="Add a comment about this grievance..."
+            />
+          </Form.Item>
+
+          <Form.Item className="mb-0">
+            <Space>
+              <Button type="primary" htmlType="submit">
+                {formatText.title("update grievance")}
+              </Button>
+              <Button onClick={() => {
+                setIsGrievanceUpdateModalVisible(false);
+                setSelectedGrievance(null);
+                grievanceForm.resetFields();
+              }}>
+                {formatText.title("cancel")}
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
       </Modal>
     </>
   );
