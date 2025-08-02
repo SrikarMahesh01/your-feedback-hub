@@ -32,8 +32,7 @@ export const RouteGuard: React.FC<RouteGuardProps> = ({ children }) => {
     // 3. No Firebase user exists (completely unauthenticated)
     // 4. Trying to access a protected route
     if (!loading && initialCheckDone && !firebaseUser && !isPublicRoute) {
-      const currentPath = location.pathname + location.search;
-      navigate(`/login?redirect=${encodeURIComponent(currentPath)}`, { replace: true });
+      navigate('/login', { replace: true });
     }
   }, [user, loading, firebaseUser, location, navigate, initialCheckDone]);
 

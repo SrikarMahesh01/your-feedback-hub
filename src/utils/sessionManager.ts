@@ -61,8 +61,15 @@ export class SessionManager {
     const lastHeartbeat = localStorage.getItem(this.SESSION_HEARTBEAT_KEY);
     
     // If no session ID in sessionStorage but there's a heartbeat in localStorage,
-    // it means browser was closed and reopened
-    return !sessionId && !!lastHeartbeat;
+    // check if the heartbeat is recent (within last 5 minutes)
+    // This allows new tabs while preventing stale sessions
+    if (!sessionId && !!lastHeartbeat) {
+      const timeSinceLastHeartbeat = Date.now() - parseInt(lastHeartbeat);
+      // Only consider it a new browser session if heartbeat is older than 5 minutes
+      return timeSinceLastHeartbeat > 300000; // 5 minutes
+    }
+    
+    return false;
   }
 
   // Generate a unique session ID

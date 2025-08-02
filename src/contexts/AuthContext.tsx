@@ -4,7 +4,9 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  User as FirebaseUser 
+  User as FirebaseUser,
+  setPersistence,
+  browserSessionPersistence
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { createUser, getUserById, getUserByEmail } from '../services/firebaseService';
@@ -44,51 +46,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setLoading(true);
       try {
         if (firebaseUser) {
-          // Check if this is a new browser session (browser was closed and reopened)
-          if (SessionManager.isNewBrowserSession()) {
-            // Browser was closed and reopened, log out the user
-            await signOut(auth);
-            SessionManager.clearSession();
-            setFirebaseUser(null);
-            setUser(null);
-            setLoading(false);
-            return;
-          }
-
-          // Check if session is still valid
-          if (!SessionManager.isSessionValid()) {
-            // Session expired or invalid, log out
-            await signOut(auth);
-            SessionManager.clearSession();
-            setFirebaseUser(null);
-            setUser(null);
-            setLoading(false);
-            return;
-          }
-
-          // Valid session, proceed with user authentication
+          // 🔐 Firebase browserSessionPersistence handles session management automatically
+          // No need for complex custom session logic as Firebase will:
+          // - Keep session alive across tabs in same browser
+          // - Clear session when browser is closed
+          // - Prevent session in incognito/different browsers
+          
           setFirebaseUser(firebaseUser);
+          
           // Get user data from Firestore
           const userData = await getUserById(firebaseUser.uid);
           if (userData) {
             setUser(userData);
-            // Initialize or continue session
-            if (!SessionManager.getSessionId()) {
-              SessionManager.initializeSession();
-            } else {
-              SessionManager.startHeartbeat();
-            }
+            // Initialize basic session tracking for UI purposes
+            SessionManager.initializeSession();
           } else {
             // If user data doesn't exist in Firestore, try to find by email
             const userByEmail = await getUserByEmail(firebaseUser.email || '');
             if (userByEmail) {
               setUser(userByEmail);
-              // Initialize or continue session
-              if (!SessionManager.getSessionId()) {
-                SessionManager.initializeSession();
-              } else {
-                SessionManager.startHeartbeat();
-              }
+              SessionManager.initializeSession();
             } else {
               // User exists in Auth but not in Firestore - this shouldn't happen
               await signOut(auth);
@@ -96,11 +73,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }
           }
         } else {
+          // No Firebase user - clear everything
           setFirebaseUser(null);
           setUser(null);
-          SessionManager.stopHeartbeat();
+          SessionManager.clearSession();
         }
       } catch (error) {
+        console.error('Auth state change error:', error);
         setFirebaseUser(null);
         setUser(null);
         SessionManager.clearSession();
@@ -115,6 +94,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (email: string, password: string): Promise<User> => {
     setLoading(true);
     try {
+      // 🛡️ Ensure browserSessionPersistence is set before authentication
+      await setPersistence(auth, browserSessionPersistence);
+      
+      // 🔐 Sign in with session persistence enforced
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       
@@ -146,6 +129,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (existingUser) {
         throw new Error('User with this email already exists');
       }
+
+      // 🛡️ Ensure browserSessionPersistence is set before registration
+      await setPersistence(auth, browserSessionPersistence);
 
       // Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, userData.email, password);

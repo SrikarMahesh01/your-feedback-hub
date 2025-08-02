@@ -16,6 +16,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
     "antd": "^5.26.5",
+    "express": "^4.21.2",
     "firebase": "^11.10.0",
     "lucide-react": "^0.344.0",
     "moment": "^2.30.1",

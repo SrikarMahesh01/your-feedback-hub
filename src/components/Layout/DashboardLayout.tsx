@@ -30,6 +30,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const navigate = useNavigate();
   const location = useLocation();
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      // Navigate to clean login page without redirect parameter
+      navigate('/login', { replace: true });
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   const getMenuItems = (userRole: User['role']) => {
     const baseItems = [
       {
@@ -149,7 +159,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     if (key === 'profile') {
       navigate('/profile');
     } else if (key === 'logout') {
-      logout();
+      handleLogout();
     }
   };
 
@@ -217,7 +227,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
       key: 'logout',
       icon: <LogoutOutlined />,
       label: 'Logout',
-      onClick: logout,
+      onClick: handleLogout,
     },
   ];
 

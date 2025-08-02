@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, Alert, Divider } from 'antd';
 import { UserOutlined, LockOutlined, FormOutlined } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AnonymousFormsList } from '../AnonymousFormsList';
 
 const { Title, Text } = Typography;
@@ -13,7 +13,6 @@ export const LoginForm: React.FC = () => {
   const [showAnonymousForms, setShowAnonymousForms] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
@@ -22,19 +21,11 @@ export const LoginForm: React.FC = () => {
     try {
       const userData = await login(values.email, values.password);
       
-      // Check if there's a redirect URL in the query parameters
-      const redirectUrl = searchParams.get('redirect');
-      
-      if (redirectUrl) {
-        // Redirect to the originally requested URL
-        navigate(decodeURIComponent(redirectUrl), { replace: true });
+      // Always use default redirect based on user role (ignore redirect parameters)
+      if (userData.role === 'student') {
+        navigate('/student/dashboard', { replace: true });
       } else {
-        // Default redirect based on user role
-        if (userData.role === 'student') {
-          navigate('/student/dashboard');
-        } else {
-          navigate('/dashboard');
-        }
+        navigate('/dashboard', { replace: true });
       }
     } catch (err) {
       setError('Invalid credentials. Please try again.');
