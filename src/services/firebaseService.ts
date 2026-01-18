@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { User, Grievance, FeedbackForm, FeedbackResponse, FeedbackFormWithCreator, getHODTitle } from '../types';
+import { formatDate } from '../utils/dateFormatter';
 import { 
   createUserWithEmailAndPassword, 
   signOut,
@@ -1385,7 +1386,7 @@ export const exportStudentsToCSV = (students: User[], departmentName: string): v
       student.branch || 'N/A',
       student.department || 'N/A',
       student.isActive !== false ? 'Active' : 'Inactive',
-      student.createdAt ? new Date(student.createdAt).toLocaleDateString() : 'N/A',
+      student.createdAt ? formatDate(student.createdAt) : 'N/A',
       'N/A' // Last login placeholder - can be implemented later
     ];
   });
@@ -1445,7 +1446,7 @@ export const exportAnonymousResponsesToCSV = async (formId: string, formTitle: s
       const row = [
         `ANO-${index + 1}`,
         response.studentYear || 'N/A',
-        submissionDate.toLocaleDateString(),
+        formatDate(response.submittedAt),
         submissionDate.toLocaleTimeString(),
       ];
 
@@ -1493,10 +1494,12 @@ export const exportAnonymousResponsesToCSV = async (formId: string, formTitle: s
 // Anonymous Forms Functions
 export const createAnonymousForm = async (formData: Omit<FeedbackForm, 'id' | 'createdAt'>) => {
   try {
+    console.log('Creating anonymous form in Firestore with data:', formData);
     const docRef = await addDoc(collection(db, ANONYMOUS_FORMS_COLLECTION), {
       ...formData,
       createdAt: serverTimestamp(),
     });
+    console.log('Anonymous form created with ID:', docRef.id);
     return docRef.id;
   } catch (error) {
     console.error('Error creating anonymous form:', error);
@@ -1506,9 +1509,14 @@ export const createAnonymousForm = async (formData: Omit<FeedbackForm, 'id' | 'c
 
 export const getAnonymousForms = async (): Promise<FeedbackForm[]> => {
   try {
-    // Get all forms and filter/sort in JavaScript to avoid requiring composite index
+    console.log('Fetching anonymous forms from Firestore...');
+    
+    // Fetch all anonymous forms (rules allow list: if true)
+    // Then filter for active forms on the client side
     const q = query(collection(db, ANONYMOUS_FORMS_COLLECTION));
     const querySnapshot = await getDocs(q);
+    
+    console.log('Total anonymous forms fetched:', querySnapshot.docs.length);
     
     const forms = querySnapshot.docs.map(doc => ({
       id: doc.id,
@@ -1517,10 +1525,15 @@ export const getAnonymousForms = async (): Promise<FeedbackForm[]> => {
       expiresAt: doc.data().expiresAt?.toDate?.()?.toISOString(),
     } as FeedbackForm));
 
-    // Filter and sort in JavaScript
-    return forms
-      .filter(form => form.isActive)
+    // Filter for active forms and sort by creation date
+    const activeForms = forms
+      .filter(form => form.isActive === true)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    console.log('Active forms after filtering:', activeForms.length);
+    console.log('Active forms:', activeForms);
+    
+    return activeForms;
   } catch (error) {
     console.error('Error getting anonymous forms:', error);
     throw error;

@@ -3,8 +3,11 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Users collection
     match /users/{userId} {
-      // Users can read their own data
-      allow read: if request.auth != null && request.auth.uid == userId;
+      // Users can read their own data by document ID
+      allow get: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow authenticated users to query/list to find their own user document by email (for login)
+      allow list: if request.auth != null;
       
       // Super admins can read/write all users
       allow read, write: if request.auth != null && 
@@ -48,25 +51,29 @@ service cloud.firestore {
       allow read: if request.auth != null && 
         resource.data.isActive == true &&
         (resource.data.targetYear == null || 
-         resource.data.targetYear == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.year) &&
-        (resource.data.targetBranch == null || 
-         resource.data.targetBranch == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.branch);
+         resource.data.targetYear == 'ALL' ||
+         resource.data.targetYear == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.year);
       
-      // Admins can create/read/update forms in their department
-      allow create, read, update: if request.auth != null && 
+      // Admins can create forms for their department
+      allow create: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      // Admins can read/update/delete forms in their department
+      allow read, update, delete: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
         resource.data.department == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department;
       
-      // Super admins can read all forms
-      allow read: if request.auth != null && 
+      // Super admins can read/update/delete all forms
+      allow read, update, delete: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
     }
     
     // Feedback responses collection
     match /feedback_responses/{responseId} {
-      // Students can create responses
+      // Students can create responses to forms
       allow create: if request.auth != null && request.data.studentId == request.auth.uid;
       
       // Students can read their own responses
@@ -85,16 +92,30 @@ service cloud.firestore {
     
     // Anonymous forms collection
     match /anonymous_forms/{formId} {
-      // Anyone can read active anonymous forms
-      allow read: if resource.data.isActive == true;
+      // Anyone can read individual active anonymous forms
+      allow get: if resource.data.isActive == true;
+      
+      // Anyone can list/query anonymous forms (client will filter for active ones)
+      allow list: if true;
       
       // Admins can create anonymous forms
       allow create: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
       
+      // Admins can update and delete their own anonymous forms
+      allow update, delete: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+        resource.data.createdBy == request.auth.uid;
+      
       // Super admins can read all anonymous forms
-      allow read: if request.auth != null && 
+      allow get, list: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
+      
+      // Super admins can update and delete all anonymous forms
+      allow update, delete: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
     }

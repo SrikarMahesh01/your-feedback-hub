@@ -5,6 +5,7 @@ import { FileTextOutlined, TeamOutlined, FormOutlined, PlusOutlined, DeleteOutli
 import { useAuth } from '../../contexts/AuthContext';
 import { Grievance, FeedbackForm, User, DEPARTMENTS } from '../../types';
 import { formatText } from '../../utils/textFormatter';
+import { formatDate } from '../../utils/dateFormatter';
 import { 
   getGrievancesByAdminDepartments, 
   getStudentsByDepartment, 

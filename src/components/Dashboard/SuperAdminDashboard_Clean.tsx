@@ -31,6 +31,7 @@ import {
   BarChartOutlined
 } from '@ant-design/icons';
 import { User, Grievance, FeedbackForm } from '../../types';
+import { formatDate } from '../../utils/dateFormatter';
 import { 
   getAllUsers, 
   getAllGrievances, 
@@ -443,7 +444,7 @@ export const SuperAdminDashboard: React.FC = () => {
       title: 'Date',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (date: string) => new Date(date).toLocaleDateString(),
+      render: (date: string) => formatDate(date),
     },
     {
       title: 'Actions',
@@ -505,7 +506,7 @@ export const SuperAdminDashboard: React.FC = () => {
       title: 'Created',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (date: string) => new Date(date).toLocaleDateString(),
+      render: (date: string) => formatDate(date),
     },
     {
       title: 'Actions',

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Tag, Typography, Row, Col, Button, Modal, Form, Input, Select, Space, Switch, InputNumber, Tooltip, message } from 'antd';
-import { PlusOutlined, DeleteOutlined, EyeOutlined, LinkOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Card, Table, Tag, Typography, Row, Col, Button, Modal, Form, Input, Select, Space, Switch, InputNumber, Tooltip, message, Dropdown } from 'antd';
+import { PlusOutlined, DeleteOutlined, EyeOutlined, LinkOutlined, DownloadOutlined, MoreOutlined } from '@ant-design/icons';
+import type { MenuProps } from 'antd';
 import { useAuth } from '../../../contexts/AuthContext';
 import { FeedbackForm, DEPARTMENTS } from '../../../types';
 import { formatText } from '../../../utils/textFormatter';
+import { formatDate } from '../../../utils/dateFormatter';
 import { 
   getAnonymousForms,
   getAnonymousResponsesByCreator,
@@ -152,8 +154,11 @@ export const AnonymousForms: React.FC = () => {
       expiresAt: values.expiresAt || null,
     };
 
+    console.log('Creating anonymous form with data:', formData);
+
     try {
-      await createAnonymousForm(formData);
+      const formId = await createAnonymousForm(formData);
+      console.log('Anonymous form created successfully with ID:', formId);
       message.success('Anonymous form created successfully!');
       setIsFormModalVisible(false);
       form.resetFields();
@@ -251,37 +256,47 @@ export const AnonymousForms: React.FC = () => {
         <Table
           dataSource={anonymousForms}
           rowKey="id"
+          scroll={{ x: 'max-content' }}
           columns={[
             {
               title: formatText.title('Form Title'),
               dataIndex: 'title',
               key: 'title',
+              width: 200,
+              ellipsis: true,
             },
             {
               title: formatText.title('Description'),
               dataIndex: 'description',
               key: 'description',
+              width: 250,
+              ellipsis: true,
               render: (text: string) => (
-                <div className="max-w-xs truncate" title={text}>
-                  {text}
-                </div>
+                <Tooltip title={text}>
+                  <div className="truncate">
+                    {text}
+                  </div>
+                </Tooltip>
               ),
             },
             {
               title: formatText.title('Target Year'),
               dataIndex: 'targetYear',
               key: 'targetYear',
+              width: 120,
               render: (year: string) => year === 'ALL' ? 'All Years' : `Year ${year}`,
             },
             {
               title: formatText.title('Target Branch'),
               dataIndex: 'targetBranch',
               key: 'targetBranch',
+              width: 100,
             },
             {
               title: formatText.title('Status'),
               dataIndex: 'isActive',
               key: 'isActive',
+              width: 100,
               render: (isActive: boolean) => (
                 <Tag color={isActive ? 'green' : 'red'}>
                   {formatText.status(isActive ? 'active' : 'inactive')}
@@ -292,58 +307,74 @@ export const AnonymousForms: React.FC = () => {
               title: formatText.title('Created'),
               dataIndex: 'createdAt',
               key: 'createdAt',
-              render: (date: string) => new Date(date).toLocaleDateString(),
+              width: 120,
+              render: (date: string) => formatDate(date),
             },
             {
               title: formatText.title('Actions'),
               key: 'actions',
-              render: (_: any, record: FeedbackForm) => (
-                <Space size="middle">
-                  <Tooltip title={record.isActive ? "Deactivate form" : "Activate form"}>
+              width: 280,
+              fixed: 'right' as const,
+              render: (_: any, record: FeedbackForm) => {
+                const items: MenuProps['items'] = [
+                  {
+                    key: 'toggle',
+                    label: record.isActive ? 'Deactivate' : 'Activate',
+                    onClick: () => handleToggleFormStatus(record.id, record.isActive),
+                  },
+                  {
+                    key: 'responses',
+                    icon: <EyeOutlined />,
+                    label: 'View Responses',
+                    onClick: () => handleViewFormResponses(record),
+                  },
+                  {
+                    key: 'export',
+                    icon: <DownloadOutlined />,
+                    label: 'Export CSV',
+                    onClick: () => handleExportResponses(record.id, record.title),
+                  },
+                  {
+                    key: 'link',
+                    icon: <LinkOutlined />,
+                    label: 'Copy Link',
+                    onClick: () => copyFormLink(record.id),
+                  },
+                  {
+                    type: 'divider',
+                  },
+                  {
+                    key: 'delete',
+                    icon: <DeleteOutlined />,
+                    label: 'Delete',
+                    danger: true,
+                    onClick: () => handleDeleteForm(record.id, record.title),
+                  },
+                ];
+
+                return (
+                  <Space size="small">
                     <Button
                       type={record.isActive ? "default" : "primary"}
                       size="small"
                       onClick={() => handleToggleFormStatus(record.id, record.isActive)}
-                      style={{
-                        backgroundColor: record.isActive ? '#ff4d4f' : '#52c41a',
-                        borderColor: record.isActive ? '#ff4d4f' : '#52c41a',
-                        color: 'white'
-                      }}
+                      danger={record.isActive}
                     >
                       {record.isActive ? 'Deactivate' : 'Activate'}
                     </Button>
-                  </Tooltip>
-                  <Button
-                    size="small"
-                    icon={<EyeOutlined />}
-                    onClick={() => handleViewFormResponses(record)}
-                  >
-                    View Responses
-                  </Button>
-                  <Button
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    onClick={() => handleExportResponses(record.id, record.title)}
-                  >
-                    Export CSV
-                  </Button>
-                  <Button
-                    size="small"
-                    icon={<LinkOutlined />}
-                    onClick={() => copyFormLink(record.id)}
-                  >
-                    Copy Link
-                  </Button>
-                  <Button
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => handleDeleteForm(record.id, record.title)}
-                  >
-                    Delete
-                  </Button>
-                </Space>
-              ),
+                    <Button
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={() => handleViewFormResponses(record)}
+                    >
+                      View Responses
+                    </Button>
+                    <Dropdown menu={{ items }} trigger={['click']}>
+                      <Button size="small" icon={<MoreOutlined />} />
+                    </Dropdown>
+                  </Space>
+                );
+              },
             },
           ]}
           pagination={{ 

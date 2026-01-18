@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Grievance, FeedbackForm } from '../../types';
 import { formatText } from '../../utils/textFormatter';
+import { formatDate } from '../../utils/dateFormatter';
 import { 
   createGrievance, 
   getGrievancesByStudent, 
@@ -270,7 +271,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialView 
       title: formatText.title('submitted'),
       dataIndex: 'submittedAt',
       key: 'submittedAt',
-      render: (date: string) => new Date(date).toLocaleDateString(),
+      render: (date: string) => formatDate(date),
     },
   ];
 
@@ -306,7 +307,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialView 
       title: formatText.title('created'),
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (date: string) => new Date(date).toLocaleDateString(),
+      render: (date: string) => formatDate(date),
     },
     {
       title: formatText.title('action'),
@@ -472,7 +473,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialView 
                 title: formatText.title('Submitted At'),
                 dataIndex: 'submittedAt',
                 key: 'submittedAt',
-                render: (date: string) => new Date(date).toLocaleDateString(),
+                render: (date: string) => formatDate(date),
               },
               {
                 title: formatText.title('Status'),
@@ -584,7 +585,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialView 
                 title: formatText.title('Submitted At'),
                 dataIndex: 'submittedAt',
                 key: 'submittedAt',
-                render: (date: string) => new Date(date).toLocaleDateString(),
+                render: (date: string) => formatDate(date),
               },
             ]}
             dataSource={submittedResponses}
@@ -641,7 +642,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialView 
                 title: formatText.title('Submitted'),
                 dataIndex: 'submittedAt',
                 key: 'submittedAt',
-                render: (date: string) => new Date(date).toLocaleDateString(),
+                render: (date: string) => formatDate(date),
               },
             ]}
             dataSource={grievances}
@@ -762,7 +763,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialView 
                   title: 'Submitted',
                   dataIndex: 'submittedAt',
                   key: 'submittedAt',
-                  render: (date: string) => new Date(date).toLocaleDateString(),
+                  render: (date: string) => formatDate(date),
                 },
               ]}
               loading={loading}
@@ -825,7 +826,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialView 
                             {response.formDetails?.title || 'Unknown Form'}
                           </div>
                           <div className="text-xs text-gray-500">
-                            {new Date(response.submittedAt).toLocaleDateString()}
+                              {formatDate(response.submittedAt)}
                           </div>
                         </div>
                         <Tag color="green">Completed</Tag>
@@ -857,7 +858,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ initialView 
                         <div>
                           <div className="font-medium text-sm">{grievance.title}</div>
                           <div className="text-xs text-gray-500">
-                            {new Date(grievance.submittedAt).toLocaleDateString()}
+                              {formatDate(grievance.submittedAt)}
                           </div>
                         </div>
                         <Tag 

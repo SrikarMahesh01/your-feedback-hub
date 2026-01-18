@@ -70,7 +70,7 @@ function App() {
                 </PrivateRoute>
               } />
               <Route path="/anonymous-forms/:formId" element={<AnonymousFormFill />} />
-              <Route path="/anonymous-forms" element={<AnonymousFormsList onBack={() => window.history.back()} />} />
+              <Route path="/anonymous-forms" element={<AnonymousFormsList />} />
               <Route path="/grievances/:grievanceId" element={
                 <PrivateRoute>
                   <GrievanceDetail />

@@ -23,6 +23,7 @@ import {
   ArrowLeftOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDate } from '../../utils/dateFormatter';
 import { changePassword, updateUserProfile } from '../../services/firebaseService';
 import { User } from '../../types';
 import { formatText } from '../../utils/textFormatter';
@@ -315,7 +316,7 @@ export const Profile: React.FC = () => {
               <Text strong>Account Created:</Text>
               <br />
               <Text type="secondary">
-                {new Date(user.createdAt).toLocaleDateString()}
+                {formatDate(user.createdAt)}
               </Text>
             </div>
           </Col>
