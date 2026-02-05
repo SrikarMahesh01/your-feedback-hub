@@ -40,6 +40,7 @@ export const AdminDashboard: React.FC = () => {
   const [selectedForm, setSelectedForm] = useState<FeedbackForm | null>(null);
   const [selectedFormResponses, setSelectedFormResponses] = useState<any[]>([]);
   const [selectedGrievance, setSelectedGrievance] = useState<Grievance | null>(null);
+  const [refreshLoading, setRefreshLoading] = useState(false);
   const [form] = Form.useForm();
   const [grievanceForm] = Form.useForm();
   
@@ -504,11 +505,23 @@ export const AdminDashboard: React.FC = () => {
         </div>
         <Button 
           type="primary" 
-          onClick={() => {
-            loadGrievances();
-            loadStudents();
-            loadFeedbackForms();
-            loadFeedbackResponses();
+          loading={refreshLoading}
+          onClick={async () => {
+            setRefreshLoading(true);
+            try {
+              await Promise.all([
+                loadGrievances(),
+                loadStudents(),
+                loadFeedbackForms(),
+                loadFeedbackResponses()
+              ]);
+              message.success('Data refreshed successfully!');
+            } catch (error) {
+              console.error('Error refreshing data:', error);
+              message.error('Failed to refresh data. Please try again.');
+            } finally {
+              setRefreshLoading(false);
+            }
           }}
         >
           Refresh Data

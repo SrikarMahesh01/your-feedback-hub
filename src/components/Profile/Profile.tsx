@@ -67,7 +67,7 @@ export const Profile: React.FC = () => {
 
       // Only update fields that are relevant to the user's role
       if (user.role === 'student') {
-        updates.rollNumber = values.rollNumber;
+        updates.rollNumber = values.rollNumber ? values.rollNumber.toUpperCase() : values.rollNumber;
         updates.year = values.year;
         updates.branch = values.branch;
       } else if (user.role === 'admin') {
@@ -197,8 +197,13 @@ export const Profile: React.FC = () => {
                     name="rollNumber"
                     label="Roll Number"
                     rules={[{ required: true, message: 'Please enter your roll number' }]}
+                    normalize={(value) => value ? value.toUpperCase() : value}
                   >
-                    <Input prefix={<IdcardOutlined />} placeholder="Enter your roll number" />
+                    <Input 
+                      prefix={<IdcardOutlined />} 
+                      placeholder="Enter your roll number (e.g., 22NG1A0569)"
+                      style={{ textTransform: 'uppercase' }}
+                    />
                   </Form.Item>
 
                   <Form.Item

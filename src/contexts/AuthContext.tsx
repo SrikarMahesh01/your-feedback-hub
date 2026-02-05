@@ -115,7 +115,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       return userData;
     } catch (error: any) {
-      throw new Error(error.message || 'Login failed');
+      // Preserve the original error object to maintain Firebase error codes
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -124,20 +125,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = async (userData: Omit<User, 'id' | 'createdAt'>, password: string) => {
     setLoading(true);
     try {
-      // Check if user already exists
-      const existingUser = await getUserByEmail(userData.email);
-      if (existingUser) {
-        throw new Error('User with this email already exists');
-      }
-
       // 🛡️ Ensure browserSessionPersistence is set before registration
       await setPersistence(auth, browserSessionPersistence);
 
-      // Create Firebase Auth user
+      // Create Firebase Auth user first - this will authenticate the user
+      // Firebase Auth will handle duplicate email checking automatically
       const userCredential = await createUserWithEmailAndPassword(auth, userData.email, password);
       const firebaseUser = userCredential.user;
 
-      // Create user profile in Firestore with the Firebase UID
+      // Now that we're authenticated, create user profile in Firestore with the Firebase UID
       await createUser({
         ...userData,
         id: firebaseUser.uid, // Use Firebase UID as the document ID
@@ -149,13 +145,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         createdAt: new Date().toISOString(),
       };
 
-      setFirebaseUser(firebaseUser);
-      setUser(newUser);
+      // Don't set the user state immediately - let them login properly
+      // This ensures a clean authentication flow
+      console.log('User created successfully:', newUser);
       
-      // Initialize session management for the new user
-      SessionManager.initializeSession();
+      // Sign out immediately after registration to force proper login
+      await signOut(auth);
+      setFirebaseUser(null);
+      setUser(null);
+      SessionManager.clearSession();
+      
+      console.log('User signed out after registration. Please login.');
     } catch (error: any) {
-      throw new Error(error.message || 'Registration failed');
+      // Preserve the original error object to maintain Firebase error codes
+      throw error;
     } finally {
       setLoading(false);
     }

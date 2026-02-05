@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Form, Input, Button, Radio, Checkbox, Rate, message, Typography, Space, Divider } from 'antd';
-import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Radio, Checkbox, Rate, message, Typography, Space, Divider, Alert, Result } from 'antd';
+import { ArrowLeftOutlined, SendOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { FeedbackForm, FormQuestion } from '../types';
 import { getFeedbackFormById, submitFeedbackResponse, checkIfStudentSubmittedForm } from '../services/firebaseService';
 import { useAuth } from '../contexts/AuthContext';
@@ -179,16 +179,37 @@ export const FeedbackFormFill: React.FC = () => {
 
   if (alreadySubmitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Title level={3} className="text-green-600">Form Already Submitted</Title>
-          <Text>You have already submitted this form. Thank you for your feedback!</Text>
-          <br />
-          <Text type="secondary">Form: {feedbackForm.title}</Text>
-          <br />
-          <Button type="primary" onClick={() => navigate('/dashboard')} className="mt-4">
-            Back to Dashboard
-          </Button>
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-4xl mx-auto px-4">
+          <Card className="shadow-lg">
+            <Result
+              status="success"
+              icon={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+              title="Form Already Submitted"
+              subTitle={
+                <div>
+                  <p>You have already submitted this feedback form. Thank you for your response!</p>
+                  <Alert
+                    message="Form Details"
+                    description={
+                      <div>
+                        <strong>{feedbackForm.title}</strong>
+                        <p className="text-gray-600 mt-2">{feedbackForm.description}</p>
+                      </div>
+                    }
+                    type="info"
+                    showIcon
+                    className="mt-4 text-left"
+                  />
+                </div>
+              }
+              extra={[
+                <Button type="primary" key="dashboard" onClick={() => navigate('/dashboard')} size="large">
+                  Back to Dashboard
+                </Button>,
+              ]}
+            />
+          </Card>
         </div>
       </div>
     );

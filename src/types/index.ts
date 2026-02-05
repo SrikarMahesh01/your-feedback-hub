@@ -69,7 +69,7 @@ export interface FeedbackResponse {
   submittedAt: string;
 }
 
-export const DEPARTMENTS = ['CSE', 'ECE', 'EEE', 'IT', 'MECH'] as const;
+export const DEPARTMENTS = ['CSE', 'ECE', 'EEE', 'IT', 'MECH', 'AI ML', 'AI DS'] as const;
 export const YEARS = ['1', '2', '3', '4'] as const;
 export const BRANCHES = DEPARTMENTS;
 
@@ -79,7 +79,9 @@ export const DEPARTMENT_HOD_MAPPING = {
   'ECE': 'ECE Department', 
   'EEE': 'EEE Department',
   'IT': 'IT Department',
-  'MECH': 'MECH Department'
+  'MECH': 'MECH Department',
+  'AI ML': 'AI ML Department',
+  'AI DS': 'AI DS Department'
 } as const;
 
 // Mapping of departments to their HOD titles
@@ -88,7 +90,9 @@ export const DEPARTMENT_HOD_TITLE_MAPPING = {
   'ECE': 'ECE HOD',
   'EEE': 'EEE HOD',
   'IT': 'IT HOD',
-  'MECH': 'MECH HOD'
+  'MECH': 'MECH HOD',
+  'AI ML': 'AI ML HOD',
+  'AI DS': 'AI DS HOD'
 } as const;
 
 // Function to get HOD department display name

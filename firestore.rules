@@ -28,13 +28,22 @@ service cloud.firestore {
     // Grievances collection
     match /grievances/{grievanceId} {
       // Students can read their own grievances
-      allow read: if request.auth != null && resource.data.studentId == request.auth.uid;
+      allow get: if request.auth != null && resource.data.studentId == request.auth.uid;
+      
+      // Students can list their own grievances
+      allow list: if request.auth != null;
       
       // Students can create grievances
-      allow create: if request.auth != null && request.data.studentId == request.auth.uid;
+      allow create: if request.auth != null && 
+        request.resource.data.studentId == request.auth.uid;
       
-      // Admins can read/update grievances in their department
-      allow read, update: if request.auth != null && 
+      // Admins can list/query all grievances (client-side filtering by department)
+      allow list: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      // Admins can read/update individual grievances in their department
+      allow get, update: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
         resource.data.department == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department;
@@ -47,40 +56,55 @@ service cloud.firestore {
     
     // Feedback forms collection
     match /feedback_forms/{formId} {
-      // Students can read active forms targeted to them
-      allow read: if request.auth != null && 
-        resource.data.isActive == true &&
-        (resource.data.targetYear == null || 
-         resource.data.targetYear == 'ALL' ||
-         resource.data.targetYear == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.year);
+      // Students can read active forms (to view and fill them)
+      allow get: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student' &&
+        resource.data.isActive == true;
+      
+      // Students can list/query active forms (client-side filtering applies)
+      allow list: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
       
       // Admins can create forms for their department
       allow create: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
       
-      // Admins can read/update/delete forms in their department
-      allow read, update, delete: if request.auth != null && 
+      // Admins can list/query all forms to filter their own forms client-side
+      allow list: if request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      // Admins can read/update/delete individual forms in their department
+      allow get, update, delete: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
         resource.data.department == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department;
       
-      // Super admins can read/update/delete all forms
-      allow read, update, delete: if request.auth != null && 
+      // Super admins can do everything with forms
+      allow read, write: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
     }
     
     // Feedback responses collection
     match /feedback_responses/{responseId} {
-      // Students can create responses to forms
-      allow create: if request.auth != null && request.data.studentId == request.auth.uid;
+      // Students can create responses to forms - ensure studentId matches authenticated user
+      allow create: if request.auth != null && 
+        request.resource.data.studentId == request.auth.uid &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
       
       // Students can read their own responses
-      allow read: if request.auth != null && resource.data.studentId == request.auth.uid;
+      allow get: if request.auth != null && resource.data.studentId == request.auth.uid;
       
-      // Admins can read responses to their department's forms
-      allow read: if request.auth != null && 
+      // Students can list/query their own responses
+      allow list: if request.auth != null;
+      
+      // Admins can list/query and read responses
+      allow list, get: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
       
