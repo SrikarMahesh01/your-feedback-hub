@@ -1,39 +1,46 @@
 # NSSM Service Configuration for Your Feedback Hub
-# 
-# To install this service with NSSM:
-# 1. Download NSSM from https://nssm.cc/download
-# 2. Open Command Prompt as Administrator
-# 3. Navigate to your project directory
-# 4. Run the following commands:
+# Updated configuration to use start-service.bat
+#
+# PREREQUISITES:
+# - Run: npm install
+# - Run: npm run build (creates dist folder)
+# - Download NSSM from https://nssm.cc/download
+#
+# INSTALLATION STEPS:
+# 1. Open Command Prompt as Administrator
+# 2. Navigate to your project directory
+# 3. Run the commands below (adjust paths as needed):
 
-# Create the service
-nssm install "YourFeedbackHub" "C:\Program Files\nodejs\node.exe"
+# Install service using the batch file
+nssm install "YourFeedbackHub" "C:\Users\admin\Desktop\YSM\your-feedback-hub\start-service.bat"
 
-# Set application parameters
-nssm set "YourFeedbackHub" AppParameters "node_modules\.bin\vite preview --port 3000 --host"
+# Configure working directory
+nssm set "YourFeedbackHub" AppDirectory "C:\Users\admin\Desktop\YSM\your-feedback-hub"
 
-# Set working directory (change this to your actual project path)
-nssm set "YourFeedbackHub" AppDirectory "C:\Users\DELL\Desktop\YSM\your-feedback-hub"
-
-# Set environment variables
-nssm set "YourFeedbackHub" AppEnvironmentExtra "NODE_ENV=production"
-
-# Set service description
-nssm set "YourFeedbackHub" Description "Your Feedback Hub - Student Feedback Management System"
-
-# Set service display name
+# Set service display information
 nssm set "YourFeedbackHub" DisplayName "Your Feedback Hub"
+nssm set "YourFeedbackHub" Description "Student Feedback Management System"
 
-# Configure service startup
+# Configure auto-start
 nssm set "YourFeedbackHub" Start SERVICE_AUTO_START
 
 # Configure logging
-nssm set "YourFeedbackHub" AppStdout "C:\logs\YourFeedbackHub\stdout.log"
-nssm set "YourFeedbackHub" AppStderr "C:\logs\YourFeedbackHub\stderr.log"
+nssm set "YourFeedbackHub" AppStdout "C:\Users\admin\Desktop\YSM\your-feedback-hub\logs\output.log"
+nssm set "YourFeedbackHub" AppStderr "C:\Users\admin\Desktop\YSM\your-feedback-hub\logs\error.log"
+nssm set "YourFeedbackHub" AppRotateFiles 1
+nssm set "YourFeedbackHub" AppRotateOnline 1
+nssm set "YourFeedbackHub" AppRotateSeconds 86400
 
 # Start the service
 nssm start "YourFeedbackHub"
 
-# Alternative: If you prefer to use npm start
-# nssm set "YourFeedbackHub" AppParameters "run start"
-# nssm set "YourFeedbackHub" Application "C:\Program Files\nodejs\npm.cmd"
+# ALTERNATIVE: Using Node.js directly (without batch file)
+# nssm install "YourFeedbackHub" "C:\Program Files\nodejs\node.exe" "server.js"
+# nssm set "YourFeedbackHub" AppDirectory "C:\Users\admin\Desktop\YSM\your-feedback-hub"
+
+# SERVICE MANAGEMENT:
+# View status:    nssm status YourFeedbackHub
+# Stop service:   nssm stop YourFeedbackHub
+# Restart:        nssm restart YourFeedbackHub
+# Remove service: nssm remove YourFeedbackHub confirm
+# Edit config:    nssm edit YourFeedbackHub

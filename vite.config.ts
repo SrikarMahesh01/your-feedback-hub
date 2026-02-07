@@ -21,8 +21,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom'],
-          antd: ['antd'],
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          antd: ['antd', '@ant-design/icons'],
           firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
         },
         // Obfuscate chunk names to hide structure
@@ -36,14 +36,12 @@ export default defineConfig({
         drop_console: true, // Remove all console statements
         drop_debugger: true, // Remove debugger statements
         pure_funcs: ['console.log', 'console.info', 'console.debug', 'console.warn'], // Remove specific console methods
-        passes: 3, // Multiple passes for better compression
+        passes: 2, // Reduced passes to avoid breaking React internals
       },
       mangle: {
-        // Mangle all variable names for obfuscation
-        toplevel: true,
-        properties: {
-          regex: /^_/, // Mangle properties starting with underscore
-        },
+        // Mangle variable names but avoid breaking React
+        toplevel: false, // Don't mangle top-level names
+        reserved: ['React', 'ReactDOM'], // Preserve React names
       },
       format: {
         comments: false, // Remove all comments
